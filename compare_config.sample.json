@@ -1,0 +1,58 @@
+{
+  "loan_grid": {
+    "principals": [1000000],
+    "periods": [3, 6, 9, 12],
+    "rates": [3598, 3300, 3000, 2400, 2100, 1800, 720],
+    "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  },
+  "algorithms": [
+    {
+      "name": "固定30天",
+      "config": {
+        "rate_config": {
+          "daily_rate_precision": 8,
+          "rounding_mode": 1,
+          "days_in_year": 360
+        },
+        "period_payment_config": {
+          "payment_algorithm": 1,
+          "rounding_mode": 1,
+          "interest_days_mode": 2
+        },
+        "repayment_date_config": {
+          "repayment_day_algorithm": 1,
+          "month_end_repayment_config": 1,
+          "fixed_repayment_day": null,
+          "min_cycle_days": null,
+          "max_cycle_days": null
+        }
+      }
+    },
+    {
+      "name": "按实际占用天数",
+      "config": {
+        "rate_config": {
+          "daily_rate_precision": 8,
+          "rounding_mode": 1,
+          "days_in_year": 360
+        },
+        "period_payment_config": {
+          "payment_algorithm": 1,
+          "rounding_mode": 1,
+          "interest_days_mode": 1
+        },
+        "repayment_date_config": {
+          "repayment_day_algorithm": 1,
+          "month_end_repayment_config": 1,
+          "fixed_repayment_day": null,
+          "min_cycle_days": null,
+          "max_cycle_days": null
+        }
+      }
+    }
+  ],
+  "output": {
+    "dir": ".",
+    "filename_prefix": "algorithm_compare"
+  }
+}
