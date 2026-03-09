@@ -1,0 +1,56 @@
+{
+  "realtime": {
+    "enabled": true,
+    "base": "CNY",
+    "symbols": ["USD", "HKD", "EUR"]
+  },
+  "rates": {
+    "CNY_USD": 0.1383,
+    "USD_HKD": 7.82,
+    "HKD_CNY": 0.9295,
+    "CNY_HKD": 1.077,
+    "HKD_USD": 0.1275,
+    "USD_CNY": 7.23,
+    "CNY_EUR": 0.1271,
+    "EUR_CNY": 7.84
+  },
+  "scenarios": {
+    "usd_hkd_deposit": {
+      "entry_conversion_steps": [
+        {
+          "from": "CNY",
+          "to": "USD",
+          "rate_key": "CNY_USD",
+          "fee_rate": 0.0015,
+          "fee_fixed": 0.0,
+          "slippage_bps": 12
+        },
+        {
+          "from": "USD",
+          "to": "HKD",
+          "rate_key": "USD_HKD",
+          "fee_rate": 0.0005,
+          "fee_fixed": 0.0,
+          "slippage_bps": 8
+        }
+      ],
+      "deposit": {
+        "currency": "HKD",
+        "annual_rate": 0.045,
+        "days": 180,
+        "compound": "simple"
+      },
+      "exit_conversion_steps": [
+        {
+          "from": "HKD",
+          "to": "CNY",
+          "rate_key": "HKD_CNY",
+          "fee_rate": 0.0015,
+          "fee_fixed": 0.0,
+          "slippage_bps": 20
+        }
+      ],
+      "time_cost_annual_rate": 0.02
+    }
+  }
+}
