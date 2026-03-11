@@ -37,6 +37,7 @@ class MonthEndRepaymentConfig:
 class InterestDaysMode:
     ACTUAL_DAYS = 1
     FIXED_30 = 2
+    SPECIAL_FIRST_ACTUAL_FEB_28 = 3
 
 
 @dataclass
@@ -152,9 +153,12 @@ def validate_input(config: SystemConfig, loan: LoanInfo) -> None:
         raise CalcError("年天数必须大于 0")
     if config.rate_config.daily_rate_precision < 0:
         raise CalcError("日利率精度不能小于 0")
-    if config.period_payment_config.payment_algorithm != PaymentAlgorithm.PMT:
+    if config.period_payment_config.payment_algorithm not in (
+        PaymentAlgorithm.PMT,
+        PaymentAlgorithm.ANNUITY_DISCOUNT,
+    ):
         raise CalcError(
-            f"当前仅支持期供算法=1(PMT)，收到: {config.period_payment_config.payment_algorithm}"
+            f"当前仅支持期供算法=1(PMT)或2(等额年金贴现)，收到: {config.period_payment_config.payment_algorithm}"
         )
     if config.repayment_date_config.repayment_day_algorithm == RepaymentDayAlgorithm.FIXED_DATE:
         if config.repayment_date_config.fixed_repayment_day is None:
@@ -171,11 +175,39 @@ def calc_daily_rate(config: SystemConfig, loan: LoanInfo) -> Decimal:
 
 
 def calc_initial_period_payment(config: SystemConfig, loan: LoanInfo, daily_rate: Decimal) -> Decimal:
-    monthly_rate = daily_rate * Decimal(30)
     pv = Decimal(loan.principal) / Decimal(100)
-    pmt_val = pmt(monthly_rate, loan.periods, pv)
-    # Excel PMT 返回负值，这里按你的公式取负后再保留两位
-    return quantize_by_mode(-pmt_val, 2, config.period_payment_config.rounding_mode)
+    if config.period_payment_config.payment_algorithm == PaymentAlgorithm.PMT:
+        monthly_rate = daily_rate * Decimal(30)
+        pmt_val = pmt(monthly_rate, loan.periods, pv)
+        # Excel PMT 返回负值，这里按你的公式取负后再保留两位
+        return quantize_by_mode(-pmt_val, 2, config.period_payment_config.rounding_mode)
+    if config.period_payment_config.payment_algorithm == PaymentAlgorithm.ANNUITY_DISCOUNT:
+        # 贴现因子按期递归计算，精度与取整方式来自利率配置
+        prev_factor = Decimal("1")
+        factors_sum = Decimal("0")
+        prev_repayment_date: Optional[date] = None
+        for i in range(1, loan.periods + 1):
+            planned_date = calc_planned_repayment_date(i, loan, config.repayment_date_config)
+            interest_days = calc_interest_days(i, planned_date, prev_repayment_date, loan, config)
+            factor = Decimal("1") / (Decimal(interest_days) * daily_rate + Decimal("1"))
+            factor = quantize_by_mode(
+                factor, config.rate_config.daily_rate_precision, config.rate_config.rounding_mode
+            )
+            factor = quantize_by_mode(
+                factor * prev_factor,
+                config.rate_config.daily_rate_precision,
+                config.rate_config.rounding_mode,
+            )
+            factors_sum += factor
+            prev_factor = factor
+            prev_repayment_date = planned_date
+        if factors_sum == 0:
+            raise CalcError("贴现因子求和为0，无法计算期供")
+        payment = pv / factors_sum
+        return quantize_by_mode(payment, 2, config.period_payment_config.rounding_mode)
+    raise CalcError(
+        f"当前仅支持期供算法=1(PMT)或2(等额年金贴现)，收到: {config.period_payment_config.payment_algorithm}"
+    )
 
 
 def calc_planned_repayment_date(
@@ -218,6 +250,13 @@ def calc_interest_days(
         if prev_planned_date is None:
             raise CalcError("第2期及以后必须提供上期还款日")
         return (planned_date - prev_planned_date).days
+    if mode == InterestDaysMode.SPECIAL_FIRST_ACTUAL_FEB_28:
+        if period_no == 1:
+            return (planned_date - loan.loan_date).days
+        prev_month = planned_date.month - 1 or 12
+        if prev_month == 2:
+            return 28
+        return 30
     raise CalcError(f"未知计息天数配置: {mode}")
 
 
