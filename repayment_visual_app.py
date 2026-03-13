@@ -29,13 +29,26 @@ ROUNDING_OPTIONS = {
 
 PAYMENT_ALGO_OPTIONS = {
     "PMT(已支持)": PaymentAlgorithm.PMT,
-    "等额年金贴现(预留)": PaymentAlgorithm.ANNUITY_DISCOUNT,
-    "首期额外计息(预留)": PaymentAlgorithm.FIRST_PERIOD_EXTRA_INTEREST,
+    "等额年金贴现": PaymentAlgorithm.ANNUITY_DISCOUNT,
+    "首期额外计息": PaymentAlgorithm.FIRST_PERIOD_EXTRA_INTEREST,
 }
 
 INTEREST_DAYS_OPTIONS = {
     "实际天数": InterestDaysMode.ACTUAL_DAYS,
     "固定30天": InterestDaysMode.FIXED_30,
+    "特殊首实际其它30": InterestDaysMode.SPECIAL_FIRST_ACTUAL_OTHER_30,
+    "特殊末实际其它30": InterestDaysMode.SPECIAL_LAST_ACTUAL_OTHER_30,
+}
+
+INTEREST_CALC_OPTIONS = {
+    "日利率计算": 1,
+    "月利率计算": 2,
+}
+
+FIRST_LAST_OPTIONS = {
+    "末期调整": 1,
+    "全部相等": 2,
+    "首末期调整": 3,
 }
 
 REPAYMENT_DAY_ALGO_OPTIONS = {
@@ -84,8 +97,11 @@ def build_config_panel() -> tuple[SystemConfig, LoanInfo]:
     st.sidebar.header("系统设置变量")
     with st.sidebar.expander("期供配置", expanded=True):
         payment_algo_label = st.selectbox("期供算法", list(PAYMENT_ALGO_OPTIONS.keys()), index=0)
-        payment_rounding_label = st.selectbox("取整方式(期供/利息)", list(ROUNDING_OPTIONS.keys()), index=0)
+        payment_rounding_label = st.selectbox("期供取整方式", list(ROUNDING_OPTIONS.keys()), index=0)
+        interest_rounding_label = st.selectbox("利息取整方式", list(ROUNDING_OPTIONS.keys()), index=0)
         interest_days_label = st.selectbox("计息天数", list(INTEREST_DAYS_OPTIONS.keys()), index=1)
+        interest_calc_label = st.selectbox("利息计算方式", list(INTEREST_CALC_OPTIONS.keys()), index=0)
+        first_last_label = st.selectbox("首末期算法配置", list(FIRST_LAST_OPTIONS.keys()), index=0)
 
     with st.sidebar.expander("利率配置", expanded=True):
         daily_rate_precision = st.number_input("日利率精度", min_value=0, max_value=18, value=8, step=1)
@@ -107,6 +123,9 @@ def build_config_panel() -> tuple[SystemConfig, LoanInfo]:
             payment_algorithm=PAYMENT_ALGO_OPTIONS[payment_algo_label],
             rounding_mode=ROUNDING_OPTIONS[payment_rounding_label],
             interest_days_mode=INTEREST_DAYS_OPTIONS[interest_days_label],
+            interest_rounding_mode=ROUNDING_OPTIONS[interest_rounding_label],
+            interest_calc_mode=INTEREST_CALC_OPTIONS[interest_calc_label],
+            first_last_algo_mode=FIRST_LAST_OPTIONS[first_last_label],
         ),
         repayment_date_config=RepaymentDateConfig(
             repayment_day_algorithm=repayment_algo,

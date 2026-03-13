@@ -38,6 +38,8 @@ class InterestDaysMode:
     ACTUAL_DAYS = 1
     FIXED_30 = 2
     SPECIAL_FIRST_ACTUAL_FEB_28 = 3
+    SPECIAL_FIRST_ACTUAL_OTHER_30 = 4
+    SPECIAL_LAST_ACTUAL_OTHER_30 = 5
 
 
 @dataclass
@@ -52,6 +54,9 @@ class PeriodPaymentConfig:
     payment_algorithm: int
     rounding_mode: int
     interest_days_mode: int
+    interest_rounding_mode: int
+    interest_calc_mode: int
+    first_last_algo_mode: int
 
 
 @dataclass
@@ -94,6 +99,7 @@ class ScheduleSummary:
     total_receivable: Decimal
     total_interest_fee: Decimal
     annualized_irr: Decimal
+    annualized_xirr: Decimal
     total_interest_days: int
     apr: Decimal
     total_principal_paid: Decimal
@@ -177,7 +183,7 @@ def calc_daily_rate(config: SystemConfig, loan: LoanInfo) -> Decimal:
 def calc_initial_period_payment(config: SystemConfig, loan: LoanInfo, daily_rate: Decimal) -> Decimal:
     pv = Decimal(loan.principal) / Decimal(100)
     if config.period_payment_config.payment_algorithm == PaymentAlgorithm.PMT:
-        monthly_rate = daily_rate * Decimal(30)
+        monthly_rate = Decimal(loan.nominal_rate) / Decimal(10000) / Decimal(12)
         pmt_val = pmt(monthly_rate, loan.periods, pv)
         # Excel PMT 返回负值，这里按你的公式取负后再保留两位
         return quantize_by_mode(-pmt_val, 2, config.period_payment_config.rounding_mode)
@@ -257,7 +263,31 @@ def calc_interest_days(
         if prev_month == 2:
             return 28
         return 30
+    if mode == InterestDaysMode.SPECIAL_FIRST_ACTUAL_OTHER_30:
+        if period_no == 1:
+            return (planned_date - loan.loan_date).days
+        return 30
+    if mode == InterestDaysMode.SPECIAL_LAST_ACTUAL_OTHER_30:
+        if period_no == loan.periods:
+            if prev_planned_date is None:
+                raise CalcError("末期计息天数计算需要上期还款日")
+            return (planned_date - prev_planned_date).days
+        return 30
     raise CalcError(f"未知计息天数配置: {mode}")
+
+
+def calc_interest_amount(
+    remaining_principal: Decimal,
+    interest_days: int,
+    daily_rate: Decimal,
+    nominal_rate: int,
+    interest_calc_mode: int,
+) -> Decimal:
+    if interest_calc_mode == 1:
+        return remaining_principal * Decimal(interest_days) * daily_rate
+    if interest_calc_mode == 2:
+        return remaining_principal * Decimal(nominal_rate) / Decimal(10000) / Decimal(12)
+    raise CalcError(f"未知利息计算方式: {interest_calc_mode}")
 
 
 def generate_schedule(config: SystemConfig, loan: LoanInfo) -> tuple[Decimal, Decimal, List[ScheduleRow]]:
@@ -272,11 +302,45 @@ def generate_schedule(config: SystemConfig, loan: LoanInfo) -> tuple[Decimal, De
     for i in range(1, loan.periods + 1):
         planned_date = calc_planned_repayment_date(i, loan, config.repayment_date_config)
         interest_days = calc_interest_days(i, planned_date, prev_repayment_date, loan, config)
-        interest = quantize_by_mode(
-            remaining_principal * Decimal(interest_days) * daily_rate,
-            2,
-            config.period_payment_config.rounding_mode,
+        raw_interest = calc_interest_amount(
+            remaining_principal,
+            interest_days,
+            daily_rate,
+            loan.nominal_rate,
+            config.period_payment_config.interest_calc_mode,
         )
+        interest = quantize_by_mode(
+            raw_interest,
+            2,
+            config.period_payment_config.interest_rounding_mode,
+        )
+
+        if config.period_payment_config.first_last_algo_mode == 3 and i == 1:
+            monthly_rate = Decimal(loan.nominal_rate) / Decimal(10000) / Decimal(12)
+            principal_payment = quantize_by_mode(
+                initial_payment - (remaining_principal * monthly_rate),
+                2,
+                config.period_payment_config.rounding_mode,
+            )
+            period_payment = quantize_by_mode(
+                principal_payment + interest, 2, config.period_payment_config.rounding_mode
+            )
+            rows.append(
+                ScheduleRow(
+                    period_no=i,
+                    planned_repayment_date=planned_date,
+                    interest_days=interest_days,
+                    remaining_principal=remaining_principal,
+                    principal_payment=principal_payment,
+                    interest_payment=interest,
+                    period_payment=period_payment,
+                )
+            )
+            remaining_principal = quantize_by_mode(
+                remaining_principal - principal_payment, 2, config.period_payment_config.rounding_mode
+            )
+            prev_repayment_date = planned_date
+            continue
 
         if i < loan.periods:
             principal_payment = quantize_by_mode(
@@ -287,9 +351,19 @@ def generate_schedule(config: SystemConfig, loan: LoanInfo) -> tuple[Decimal, De
             principal_payment = quantize_by_mode(
                 remaining_principal, 2, config.period_payment_config.rounding_mode
             )
-            period_payment = quantize_by_mode(
-                principal_payment + interest, 2, config.period_payment_config.rounding_mode
-            )
+            if config.period_payment_config.first_last_algo_mode == 2:
+                period_payment = quantize_by_mode(
+                    initial_payment, 2, config.period_payment_config.rounding_mode
+                )
+                interest = quantize_by_mode(
+                    period_payment - principal_payment,
+                    2,
+                    config.period_payment_config.interest_rounding_mode,
+                )
+            else:
+                period_payment = quantize_by_mode(
+                    principal_payment + interest, 2, config.period_payment_config.rounding_mode
+                )
 
         rows.append(
             ScheduleRow(
@@ -391,6 +465,81 @@ def irr_periodic(cash_flows: List[Decimal], guess: Decimal = Decimal("0.1")) -> 
     return (low + high) / 2
 
 
+def xirr_annualized(cash_flows: List[Decimal], dates: List[date], guess: Decimal = Decimal("0.1")) -> Decimal:
+    if len(cash_flows) < 2:
+        raise CalcError("XIRR 现金流至少需要 2 期")
+    if len(cash_flows) != len(dates):
+        raise CalcError("XIRR 现金流与日期数量不一致")
+    if not (any(cf > 0 for cf in cash_flows) and any(cf < 0 for cf in cash_flows)):
+        raise CalcError("XIRR 现金流必须同时包含流出(负)和流入(正)")
+
+    start_date = dates[0]
+
+    def year_frac(d: date) -> Decimal:
+        return Decimal((d - start_date).days) / Decimal(365)
+
+    def npv(rate: Decimal) -> Decimal:
+        if rate <= Decimal("-1"):
+            raise CalcError("XIRR 计算失败：贴现率 <= -100%")
+        with localcontext() as ctx:
+            ctx.prec = 50
+            one = Decimal("1")
+            total = Decimal("0")
+            for cf, d in zip(cash_flows, dates):
+                total += cf / (one + rate) ** year_frac(d)
+            return total
+
+    def d_npv(rate: Decimal) -> Decimal:
+        with localcontext() as ctx:
+            ctx.prec = 50
+            one = Decimal("1")
+            total = Decimal("0")
+            for cf, d in zip(cash_flows, dates):
+                t = year_frac(d)
+                if t == 0:
+                    continue
+                total -= (t * cf) / (one + rate) ** (t + 1)
+            return total
+
+    x = guess
+    for _ in range(100):
+        fx = npv(x)
+        dfx = d_npv(x)
+        if dfx == 0:
+            break
+        x_new = x - fx / dfx
+        if x_new <= Decimal("-0.999999999"):
+            break
+        if abs(x_new - x) < Decimal("1e-14"):
+            return x_new
+        x = x_new
+
+    low = Decimal("-0.9999")
+    high = Decimal("10")
+    f_low = npv(low)
+    f_high = npv(high)
+    expand_count = 0
+    while f_low * f_high > 0 and expand_count < 20:
+        high *= 2
+        f_high = npv(high)
+        expand_count += 1
+    if f_low * f_high > 0:
+        raise CalcError("XIRR 计算失败：未找到有效根区间")
+
+    for _ in range(200):
+        mid = (low + high) / 2
+        f_mid = npv(mid)
+        if abs(f_mid) < Decimal("1e-18") or abs(high - low) < Decimal("1e-14"):
+            return mid
+        if f_low * f_mid <= 0:
+            high = mid
+            f_high = f_mid
+        else:
+            low = mid
+            f_low = f_mid
+    return (low + high) / 2
+
+
 def calculate_summary(
     rows: List[ScheduleRow], loan: LoanInfo, rounding_mode: int
 ) -> ScheduleSummary:
@@ -406,6 +555,10 @@ def calculate_summary(
     cash_flows = [-principal_yuan] + [r.period_payment for r in rows]
     periodic_irr = irr_periodic(cash_flows)
     annualized_irr = quantize_by_mode(periodic_irr * Decimal(12), 8, rounding_mode)
+
+    xirr_cash_flows = [-principal_yuan] + [r.period_payment for r in rows]
+    xirr_dates = [loan.loan_date] + [r.planned_repayment_date for r in rows]
+    annualized_xirr = quantize_by_mode(xirr_annualized(xirr_cash_flows, xirr_dates), 8, rounding_mode)
 
     total_interest_days = (rows[-1].planned_repayment_date - loan.loan_date).days
     if loan.periods <= 0:
@@ -427,6 +580,7 @@ def calculate_summary(
         total_receivable=total_receivable,
         total_interest_fee=total_interest_fee,
         annualized_irr=annualized_irr,
+        annualized_xirr=annualized_xirr,
         total_interest_days=total_interest_days,
         apr=apr,
         total_principal_paid=total_principal_paid,
@@ -478,6 +632,9 @@ def demo() -> None:
             payment_algorithm=PaymentAlgorithm.PMT,
             rounding_mode=RoundingMode.HALF_UP,
             interest_days_mode=InterestDaysMode.FIXED_30,
+            interest_rounding_mode=RoundingMode.HALF_UP,
+            interest_calc_mode=1,
+            first_last_algo_mode=1,
         ),
         repayment_date_config=RepaymentDateConfig(
             repayment_day_algorithm=RepaymentDayAlgorithm.BASED_ON_START_DATE,

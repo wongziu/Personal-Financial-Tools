@@ -58,6 +58,11 @@ def parse_system_config(raw: dict[str, Any]) -> SystemConfig:
             payment_algorithm=int(get_required(pay, ["payment_algorithm", "期供算法"], "期供算法")),
             rounding_mode=int(get_required(pay, ["rounding_mode", "取整方式"], "期供配置.取整方式")),
             interest_days_mode=int(get_required(pay, ["interest_days_mode", "计息天数"], "计息天数")),
+            interest_rounding_mode=int(
+                get_optional(pay, ["interest_rounding_mode", "利息取整方式"], get_required(pay, ["rounding_mode", "取整方式"], "期供配置.取整方式"))
+            ),
+            interest_calc_mode=int(get_optional(pay, ["interest_calc_mode", "利息计算方式"], 1)),
+            first_last_algo_mode=int(get_optional(pay, ["first_last_algo_mode", "首末期算法配置"], 1)),
         ),
         repayment_date_config=RepaymentDateConfig(
             repayment_day_algorithm=int(
@@ -315,7 +320,12 @@ def build_sample_defaults() -> tuple[list[int], list[int], list[int], list[int],
         config=SystemConfig(
             rate_config=RateConfig(daily_rate_precision=8, rounding_mode=1, days_in_year=360),
             period_payment_config=PeriodPaymentConfig(
-                payment_algorithm=1, rounding_mode=1, interest_days_mode=2
+                payment_algorithm=1,
+                rounding_mode=1,
+                interest_days_mode=2,
+                interest_rounding_mode=1,
+                interest_calc_mode=1,
+                first_last_algo_mode=1,
             ),
             repayment_date_config=RepaymentDateConfig(
                 repayment_day_algorithm=1,
@@ -331,7 +341,12 @@ def build_sample_defaults() -> tuple[list[int], list[int], list[int], list[int],
         config=SystemConfig(
             rate_config=RateConfig(daily_rate_precision=8, rounding_mode=1, days_in_year=360),
             period_payment_config=PeriodPaymentConfig(
-                payment_algorithm=1, rounding_mode=1, interest_days_mode=1
+                payment_algorithm=1,
+                rounding_mode=1,
+                interest_days_mode=1,
+                interest_rounding_mode=1,
+                interest_calc_mode=1,
+                first_last_algo_mode=1,
             ),
             repayment_date_config=RepaymentDateConfig(
                 repayment_day_algorithm=1,
