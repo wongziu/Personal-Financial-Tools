@@ -6,19 +6,20 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { ModuleDefinition, ModuleField } from "@/lib/modules";
 import type { Row } from "@/lib/services";
+import { FieldLabel, HeaderHelp } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { translateColumn, translateColumnHelp, translateEnum, translateFieldHelp, translateText, type Language } from "@/lib/i18n";
 
-function displayValue(value: unknown): string {
+function displayValue(value: unknown, language: Language): string {
   if (value === null || value === undefined || value === "") {
     return "N/A";
   }
@@ -29,13 +30,13 @@ function displayValue(value: unknown): string {
 
   if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
     try {
-      return (JSON.parse(value) as string[]).join(", ");
+      return (JSON.parse(value) as string[]).map((item) => translateEnum(item, language)).join(", ");
     } catch {
-      return value;
+      return translateEnum(value, language);
     }
   }
 
-  return String(value);
+  return translateEnum(String(value), language);
 }
 
 function initialFieldValue(field: ModuleField): string | boolean {
@@ -64,12 +65,18 @@ function FieldControl({
   onChange: (value: string | boolean) => void;
 }) {
   const { language } = useLanguage();
-  const label = language === "zh-CN" ? field.labelZh : field.labelEn;
+  const label = language === "en-US" ? field.labelEn : translateText(field.labelZh, language);
+  const help = translateFieldHelp({
+    column: field.column,
+    labelZh: field.labelZh,
+    labelEn: field.labelEn,
+    language
+  });
 
   if (field.type === "textarea" || field.type === "tags") {
     return (
       <div className="flex flex-col gap-2">
-        <Label htmlFor={field.name}>{label}</Label>
+        <FieldLabel htmlFor={field.name} label={label} help={help} />
         <Textarea
           id={field.name}
           name={field.name}
@@ -85,7 +92,7 @@ function FieldControl({
   if (field.type === "select") {
     return (
       <div className="flex flex-col gap-2">
-        <Label>{label}</Label>
+        <FieldLabel label={label} help={help} />
         <Select value={String(value)} onValueChange={onChange}>
           <SelectTrigger>
             <SelectValue />
@@ -93,7 +100,7 @@ function FieldControl({
           <SelectContent>
             {(field.options ?? []).map((option) => (
               <SelectItem value={option} key={option}>
-                {option}
+                {translateEnum(option, language)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -105,7 +112,7 @@ function FieldControl({
   if (field.type === "boolean") {
     return (
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
-        <Label htmlFor={field.name}>{label}</Label>
+        <FieldLabel htmlFor={field.name} label={label} help={help} />
         <Switch id={field.name} checked={Boolean(value)} onCheckedChange={onChange} />
       </div>
     );
@@ -113,7 +120,7 @@ function FieldControl({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={field.name}>{label}</Label>
+      <FieldLabel htmlFor={field.name} label={label} help={help} />
       <Input
         id={field.name}
         name={field.name}
@@ -146,8 +153,8 @@ export function ModulePage({ definition, rows }: { definition: ModuleDefinition;
     return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(normalized));
   }, [query, rows]);
 
-  const title = language === "zh-CN" ? definition.navLabelZh : definition.navLabelEn;
-  const description = language === "zh-CN" ? definition.descriptionZh : definition.descriptionEn;
+  const title = language === "en-US" ? definition.navLabelEn : translateText(definition.navLabelZh, language);
+  const description = language === "en-US" ? definition.descriptionEn : translateText(definition.descriptionZh, language);
 
   const submit = () => {
     startTransition(async () => {
@@ -213,7 +220,9 @@ export function ModulePage({ definition, rows }: { definition: ModuleDefinition;
         <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <CardTitle>{title}</CardTitle>
-            <CardDescription>{filteredRows.length} records</CardDescription>
+            <CardDescription>
+              {filteredRows.length} {t.records}
+            </CardDescription>
           </div>
           <div className="relative w-full md:w-80">
             <SearchIcon className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
@@ -225,7 +234,12 @@ export function ModulePage({ definition, rows }: { definition: ModuleDefinition;
             <TableHeader>
               <TableRow>
                 {definition.tableColumns.map((column) => (
-                  <TableHead key={column}>{column}</TableHead>
+                  <TableHead key={column}>
+                    <HeaderHelp
+                      label={translateColumn(definition.table, column, language)}
+                      help={translateColumnHelp(definition.table, column, language)}
+                    />
+                  </TableHead>
                 ))}
               </TableRow>
             </TableHeader>
@@ -242,9 +256,9 @@ export function ModulePage({ definition, rows }: { definition: ModuleDefinition;
                     {definition.tableColumns.map((column) => (
                       <TableCell key={column}>
                         {column.includes("status") || column.includes("severity") ? (
-                          <Badge variant="secondary">{displayValue(row[column])}</Badge>
+                          <Badge variant="secondary">{displayValue(row[column], language)}</Badge>
                         ) : (
-                          displayValue(row[column])
+                          displayValue(row[column], language)
                         )}
                       </TableCell>
                     ))}

@@ -12,12 +12,12 @@ export function ExportPage() {
     <div className="flex max-w-3xl flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t.export}</h1>
-        <p className="text-sm text-muted-foreground">Export all V1 modules into one workbook with multiple sheets.</p>
+        <p className="text-sm text-muted-foreground">{t.exportDescription}</p>
       </div>
       <Card>
         <CardHeader>
           <CardTitle>{t.downloadWorkbook}</CardTitle>
-          <CardDescription>Accounts, securities, transactions, cashflows, prices, FX, sources, theses, events, decisions, risk rules, and exceptions.</CardDescription>
+          <CardDescription>{t.exportWorkbookDescription}</CardDescription>
         </CardHeader>
         <CardContent>
           <Button onClick={() => { window.location.href = "/api/export"; }}>

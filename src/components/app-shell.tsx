@@ -20,8 +20,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLanguage } from "@/components/language-provider";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { languageOptions, translateText, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -44,6 +45,7 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { language, setLanguage, t } = useLanguage();
+  const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -69,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="size-4" />
-                {language === "zh-CN" ? item.labelZh : item.labelEn}
+                {localize(item.labelZh, item.labelEn)}
               </Link>
             );
           })}
@@ -82,15 +84,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-xs text-muted-foreground">V1 Trading Loop</div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLanguage(language === "zh-CN" ? "en-US" : "zh-CN")}
-              title={t.language}
-            >
-              <GlobeIcon data-icon="inline-start" />
-              {language === "zh-CN" ? "EN" : "中文"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <GlobeIcon className="size-4 text-muted-foreground" />
+              <Select value={language} onValueChange={(value) => setLanguage(value as Language)}>
+                <SelectTrigger aria-label={t.language} className="h-9 w-[128px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {languageOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <ThemeToggle />
           </div>
         </header>

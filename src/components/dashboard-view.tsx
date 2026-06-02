@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { translateColumn, translateEnum } from "@/lib/i18n";
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("zh-CN", { style: "currency", currency }).format(value);
@@ -16,7 +17,7 @@ function percent(value: number) {
 }
 
 export function DashboardView({ data }: { data: DashboardData }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const metricCards = [
     { label: t.portfolioNetValue, value: money(data.metrics.portfolioNetValue, data.baseCurrency) },
     { label: t.cashValue, value: money(data.metrics.cashValueBase, data.baseCurrency) },
@@ -28,7 +29,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t.dashboard}</h1>
-        <p className="text-sm text-muted-foreground">Trading-loop overview from the local SQLite database.</p>
+        <p className="text-sm text-muted-foreground">{t.holdingsAndNavDescription}</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((metric) => (
@@ -44,25 +45,25 @@ export function DashboardView({ data }: { data: DashboardData }) {
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Holdings & NAV</CardTitle>
-            <CardDescription>Calculated from settled trades, manual prices, and FX rates.</CardDescription>
+            <CardTitle>{t.holdingsAndNav}</CardTitle>
+            <CardDescription>{t.holdingsAndNavDescription}</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>security</TableHead>
-                  <TableHead>strategy</TableHead>
-                  <TableHead>quantity</TableHead>
-                  <TableHead>market value</TableHead>
-                  <TableHead>weight</TableHead>
+                  <TableHead>{translateColumn("dashboard_positions", "security", language)}</TableHead>
+                  <TableHead>{translateColumn("dashboard_positions", "strategy", language)}</TableHead>
+                  <TableHead>{translateColumn("dashboard_positions", "quantity", language)}</TableHead>
+                  <TableHead>{translateColumn("dashboard_positions", "market_value", language)}</TableHead>
+                  <TableHead>{translateColumn("dashboard_positions", "weight", language)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.positions.map((position) => (
                   <TableRow key={`${position.account_id}-${position.security_id}`}>
                     <TableCell>{String(position.security_name)}</TableCell>
-                    <TableCell>{String(position.strategy_type)}</TableCell>
+                    <TableCell>{translateEnum(position.strategy_type, language)}</TableCell>
                     <TableCell>{Number(position.quantity).toFixed(2)}</TableCell>
                     <TableCell>{money(position.marketValueBase, data.baseCurrency)}</TableCell>
                     <TableCell>{percent(position.weight)}</TableCell>
@@ -77,14 +78,16 @@ export function DashboardView({ data }: { data: DashboardData }) {
           <Card>
             <CardHeader>
               <CardTitle>{t.riskWarnings}</CardTitle>
-              <CardDescription>Weak warnings; execution is allowed with audit draft.</CardDescription>
+              <CardDescription>{t.weakRiskDescription}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
               {data.riskWarnings.map((warning) => (
                 <Alert key={warning.ruleCode}>
                   <AlertTitle className="flex items-center gap-2">
                     {warning.ruleCode}
-                    <Badge variant={warning.severity === "Hard" ? "destructive" : "secondary"}>{warning.severity}</Badge>
+                    <Badge variant={warning.severity === "Hard" ? "destructive" : "secondary"}>
+                      {translateEnum(warning.severity, language)}
+                    </Badge>
                   </AlertTitle>
                   <AlertDescription>
                     {percent(warning.actual)} / {percent(warning.threshold)}
@@ -97,7 +100,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
           <Card>
             <CardHeader>
               <CardTitle>{t.pendingExceptions}</CardTitle>
-              <CardDescription>{data.metrics.pendingExceptionCount} open items</CardDescription>
+              <CardDescription>
+                {data.metrics.pendingExceptionCount} {t.records}
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
               {data.pendingExceptions.map((item) => (
