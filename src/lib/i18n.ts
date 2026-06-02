@@ -43,6 +43,31 @@ export interface Dictionary {
   weakRiskDescription: string;
   exportDescription: string;
   exportWorkbookDescription: string;
+  totalRecords: string;
+  visibleRecords: string;
+  latestDate: string;
+  dateRange: string;
+  dateDimension: string;
+  dateField: string;
+  allDates: string;
+  last30Days: string;
+  selectedMonth: string;
+  selectedDay: string;
+  clearDateFilter: string;
+  calendarActivity: string;
+  noDateField: string;
+  activeFilters: string;
+  quickFx: string;
+  latestRates: string;
+  addQuickRate: string;
+  fromCurrency: string;
+  toCurrency: string;
+  rate: string;
+  source: string;
+  asOf: string;
+  manualQuickSet: string;
+  saveRate: string;
+  recordsOnDate: string;
 }
 
 const simplifiedToTraditional = OpenCC.Converter({ from: "cn", to: "tw" });
@@ -81,7 +106,32 @@ const zhCN: Dictionary = {
   holdingsAndNavDescription: "由已结算交易、手动价格和汇率计算。",
   weakRiskDescription: "弱提示；允许执行，但硬限制会生成审计草稿。",
   exportDescription: "将 V1 所有模块导出为一个包含多个 sheet 的工作簿。",
-  exportWorkbookDescription: "账户、标的、交易、现金流、价格、汇率、信息来源、论点、事件、决策、风险规则和例外。"
+  exportWorkbookDescription: "账户、标的、交易、现金流、价格、汇率、信息来源、论点、事件、决策、风险规则和例外。",
+  totalRecords: "总记录",
+  visibleRecords: "当前显示",
+  latestDate: "最新日期",
+  dateRange: "日期范围",
+  dateDimension: "日历维度",
+  dateField: "日期字段",
+  allDates: "全部日期",
+  last30Days: "近 30 天",
+  selectedMonth: "选定月份",
+  selectedDay: "选定日期",
+  clearDateFilter: "清除日期",
+  calendarActivity: "日历活动",
+  noDateField: "该页面没有日期字段",
+  activeFilters: "当前筛选",
+  quickFx: "汇率速查",
+  latestRates: "最新汇率",
+  addQuickRate: "快速设置汇率",
+  fromCurrency: "原币",
+  toCurrency: "目标币种",
+  rate: "汇率",
+  source: "来源",
+  asOf: "截至",
+  manualQuickSet: "手动快速设置",
+  saveRate: "保存汇率",
+  recordsOnDate: "条记录"
 };
 
 const enUS: Dictionary = {
@@ -119,7 +169,32 @@ const enUS: Dictionary = {
   weakRiskDescription: "Weak warnings; execution is allowed, with hard limits creating audit drafts.",
   exportDescription: "Export all V1 modules into one workbook with multiple sheets.",
   exportWorkbookDescription:
-    "Accounts, securities, transactions, cashflows, prices, FX, sources, theses, events, decisions, risk rules, and exceptions."
+    "Accounts, securities, transactions, cashflows, prices, FX, sources, theses, events, decisions, risk rules, and exceptions.",
+  totalRecords: "Total Records",
+  visibleRecords: "Visible Records",
+  latestDate: "Latest Date",
+  dateRange: "Date Range",
+  dateDimension: "Calendar Dimension",
+  dateField: "Date Field",
+  allDates: "All Dates",
+  last30Days: "Last 30 Days",
+  selectedMonth: "Selected Month",
+  selectedDay: "Selected Day",
+  clearDateFilter: "Clear Date",
+  calendarActivity: "Calendar Activity",
+  noDateField: "This page has no date field",
+  activeFilters: "Active Filters",
+  quickFx: "FX Quick View",
+  latestRates: "Latest Rates",
+  addQuickRate: "Quick Add Rate",
+  fromCurrency: "From",
+  toCurrency: "To",
+  rate: "Rate",
+  source: "Source",
+  asOf: "As of",
+  manualQuickSet: "Manual quick set",
+  saveRate: "Save Rate",
+  recordsOnDate: "records"
 };
 
 const zhTW = Object.fromEntries(
@@ -253,6 +328,141 @@ const tableColumns: Record<string, Record<string, { zh: string; en: string }>> =
     quantity: { zh: "数量", en: "Quantity" },
     market_value: { zh: "市值", en: "Market Value" },
     weight: { zh: "权重", en: "Weight" }
+  }
+};
+
+const uiHelp: Record<string, { zh: string; en: string }> = {
+  "dashboard.page": {
+    zh: "集中查看组合净值、现金、持仓集中度、主题暴露、风险警告和待处理事项。",
+    en: "Use this overview to monitor NAV, cash, concentration, theme exposure, warnings, and pending work."
+  },
+  "dashboard.portfolioNetValue": {
+    zh: "组合内所有纳入净值账户的持仓市值和现金折算后的合计值。",
+    en: "Total converted value of holdings and cash for accounts included in NAV."
+  },
+  "dashboard.cashValue": {
+    zh: "按账户和币种汇总现金余额，再折算为基准货币后的金额。",
+    en: "Cash balances grouped by account and currency, converted into the base currency."
+  },
+  "dashboard.largestHolding": {
+    zh: "当前权重最高的单一标的，用于识别集中度风险。",
+    en: "The single largest security by portfolio weight, used to spot concentration risk."
+  },
+  "dashboard.maxTheme": {
+    zh: "当前暴露最高的风险主题，用于识别同类风险是否过度集中。",
+    en: "The largest risk-theme exposure, used to spot crowding in related positions."
+  },
+  "dashboard.holdingsAndNav": {
+    zh: "由已结算交易、价格和汇率推算出的持仓、估值和权重。",
+    en: "Holdings, valuation, and weights derived from settled trades, prices, and FX rates."
+  },
+  "dashboard.riskWarnings": {
+    zh: "根据风险规则计算的预警。硬限制突破后仍执行，会进入例外审计。",
+    en: "Warnings calculated from risk rules. Executing through hard limits enters exception review."
+  },
+  "dashboard.pendingExceptions": {
+    zh: "尚未关闭的事前例外或事后违规记录，需要后续补充原因和处理结果。",
+    en: "Open pre-trade exceptions or post-trade violations that still need rationale and resolution."
+  },
+  "module.pageTitle": {
+    zh: "该页面用于维护本模块的基础数据，保存后会进入查询、统计或风控计算。",
+    en: "This page maintains module data used later in queries, reporting, or risk checks."
+  },
+  "module.newRecord": {
+    zh: "新增一条本模块记录。带 ID 前缀的模块可留空 ID，由系统保存时生成。",
+    en: "Create a module record. For prefixed modules, leave the ID blank and the system will generate it."
+  },
+  "module.totalRecords": {
+    zh: "当前模块保存的全部记录数，不受搜索和日期筛选影响。",
+    en: "All records stored in this module before search or date filtering."
+  },
+  "module.visibleRecords": {
+    zh: "应用当前搜索和日期条件后，列表中实际显示的记录数。",
+    en: "Records currently visible after applying search and date filters."
+  },
+  "module.latestDate": {
+    zh: "当前日期维度下的最新记录日期，用于判断数据是否需要更新。",
+    en: "Latest record date under the selected date dimension, useful for freshness checks."
+  },
+  "module.activeFilters": {
+    zh: "当前正在生效的搜索或日期条件。清除后会恢复查看全部记录。",
+    en: "The search or date condition currently applied. Clear it to view all records."
+  },
+  "module.dateDimension": {
+    zh: "按选定日期字段查看记录分布，并可点击某一天快速筛选。",
+    en: "View record distribution by a selected date field and click a day to filter quickly."
+  },
+  "module.dateField": {
+    zh: "选择用于日历和日期筛选的字段，例如成交日期、价格日期或复核日期。",
+    en: "Choose the field used by the calendar and date filters, such as trade, price, or review date."
+  },
+  "module.selectedMonth": {
+    zh: "控制日历展示的月份；改变月份后会自动切换为按月筛选。",
+    en: "Controls the displayed calendar month; changing it switches to month filtering."
+  },
+  "module.calendarActivity": {
+    zh: "每个日期角标代表当天记录数，点击日期可只看当天数据。",
+    en: "The badge on each date is the record count; click a date to show only that day's rows."
+  },
+  "module.table": {
+    zh: "列表展示本模块最常用的查询字段，字段旁的问号说明该字段口径。",
+    en: "The table shows common query fields; question marks explain each column's definition."
+  },
+  "module.search": {
+    zh: "在当前模块记录中做全文筛选，适合按 ID、名称、状态或备注快速定位。",
+    en: "Full-text filter within this module, useful for finding IDs, names, statuses, or notes."
+  },
+  "fx.quickFx": {
+    zh: "快速查看最新有效汇率，也可以直接录入一条新的手动汇率。",
+    en: "Quickly review latest available rates and enter a new manual FX rate."
+  },
+  "fx.latestRates": {
+    zh: "每个币种对展示当前表内最新日期的汇率记录。",
+    en: "Each currency pair shows the latest dated rate available in this table."
+  },
+  "fx.fromCurrency": {
+    zh: "汇率换算的原始币种，例如 USD 表示 1 美元。",
+    en: "Source currency for conversion, for example USD means 1 US dollar."
+  },
+  "fx.toCurrency": {
+    zh: "汇率换算后的目标币种。V1 默认用 CNY 做基准币种。",
+    en: "Target currency after conversion. V1 uses CNY as the default base currency."
+  },
+  "fx.rate": {
+    zh: "1 单位原币可折算的目标币种数量，例如 USD 到 CNY 填 7.20。",
+    en: "Target-currency amount for 1 source-currency unit, for example USD to CNY as 7.20."
+  },
+  "fx.rateDate": {
+    zh: "该汇率适用的日期。交易和快照折算时应尽量使用同日汇率。",
+    en: "Date the rate applies to. Trades and snapshots should use same-day rates when possible."
+  },
+  "fx.source": {
+    zh: "记录汇率来源，便于之后核对或替换为正式数据。",
+    en: "Source of the FX rate, used for later reconciliation or replacement."
+  },
+  "fx.saveRate": {
+    zh: "保存后会新增一条汇率记录，并刷新当前汇率列表。",
+    en: "Saving creates a new FX rate record and refreshes the current list."
+  },
+  "tradeDecisions.page": {
+    zh: "事前记录交易理由、预期仓位、悲观损失和风控结果，形成交易闭环。",
+    en: "Record pre-trade rationale, expected weights, downside loss, and risk results for the trading loop."
+  },
+  "tradeDecisions.riskCheck": {
+    zh: "提交时服务端会按风险规则校验；硬限制仍可执行，但会生成例外草稿。",
+    en: "On submit, server rules run the risk check; hard limits can still execute but create exception drafts."
+  },
+  "export.page": {
+    zh: "把当前 SQLite 中的 V1 数据导出为 Excel，多张表保存在同一个工作簿中。",
+    en: "Export current V1 data from SQLite into one Excel workbook with multiple sheets."
+  },
+  "export.workbook": {
+    zh: "下载的工作簿覆盖账户、标的、交易、现金流、价格、汇率、来源、论点、事件、决策、风险和例外。",
+    en: "The workbook covers accounts, securities, trades, cashflows, prices, FX, sources, theses, events, decisions, risk, and exceptions."
+  },
+  "app.language": {
+    zh: "切换界面语言。代码和数据字段保持英文，界面文案支持简体、繁体和英文。",
+    en: "Switch display language. Code and data fields stay English while UI copy supports Simplified, Traditional, and English."
   }
 };
 
@@ -638,6 +848,20 @@ export function translateColumnHelp(table: string, column: string, language: Lan
     labelEn: labelPair?.en ?? column,
     language
   });
+}
+
+export function translateUiHelp(key: string, language: Language): string {
+  const help = uiHelp[key];
+
+  if (!help) {
+    return language === "en-US" ? "Hover help for this area." : translateText("该区域的悬停说明。", language);
+  }
+
+  if (language === "en-US") {
+    return help.en;
+  }
+
+  return language === "zh-TW" ? translateText(help.zh, language) : help.zh;
 }
 
 export function translateEnum(value: unknown, language: Language): string {

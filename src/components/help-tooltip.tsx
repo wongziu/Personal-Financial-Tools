@@ -1,16 +1,20 @@
 "use client";
 
 import { CircleHelpIcon } from "lucide-react";
+import { useLanguage } from "@/components/language-provider";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function HelpTooltip({ content, label }: { content: string; label: string }) {
+  const { language } = useLanguage();
+  const prefix = language === "en-US" ? "Help" : language === "zh-TW" ? "說明" : "说明";
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`${label} 说明`}
+          aria-label={`${prefix}: ${label}`}
           className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <CircleHelpIcon className="size-3.5" />

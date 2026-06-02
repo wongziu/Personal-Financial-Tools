@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { languageOptions, normalizeLanguage, translateColumn, translateColumnHelp, translateEnum, translateFieldHelp, translateText } from "@/lib/i18n";
+import { languageOptions, normalizeLanguage, translateColumn, translateColumnHelp, translateEnum, translateFieldHelp, translateText, translateUiHelp } from "@/lib/i18n";
 
 describe("i18n system", () => {
   test("supports visible Simplified Chinese, Traditional Chinese, and English options", () => {
@@ -27,6 +27,12 @@ describe("i18n system", () => {
     expect(translateColumnHelp("securities", "benchmark", "zh-CN")).toContain("对照表现");
     expect(translateColumnHelp("securities", "benchmark", "zh-TW")).toContain("對照表現");
     expect(translateColumnHelp("securities", "benchmark", "en-US")).toContain("Benchmark");
+  });
+
+  test("provides localized UI help text", () => {
+    expect(translateUiHelp("module.totalRecords", "zh-CN")).toContain("全部记录数");
+    expect(translateUiHelp("module.totalRecords", "zh-TW")).toContain("全部記錄數");
+    expect(translateUiHelp("module.totalRecords", "en-US")).toContain("All records");
   });
 
   test("falls back to generated field help when no specific copy exists", () => {

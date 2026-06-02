@@ -4,6 +4,38 @@ import { seedDemoData } from "@/lib/db/seed";
 import { createTradeDecisionWithRisk, getDashboardData, listAllExportData } from "@/lib/services";
 
 describe("database integration", () => {
+  test("seeds demo data idempotently", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const tables = [
+      "accounts",
+      "securities",
+      "transactions",
+      "cashflows",
+      "market_prices",
+      "fx_rates",
+      "information_sources",
+      "theses",
+      "thesis_evidence",
+      "review_events",
+      "trade_decisions",
+      "trade_decision_sources",
+      "exceptions"
+    ];
+    const countRows = () =>
+      Object.fromEntries(
+        tables.map((table) => {
+          const row = database.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
+          return [table, row.count];
+        })
+      );
+
+    const firstCounts = countRows();
+    seedDemoData(database);
+
+    expect(countRows()).toEqual(firstCounts);
+  });
+
   test("initializes and seeds the local investment system database", () => {
     const database = createDatabase(":memory:");
     seedDemoData(database);

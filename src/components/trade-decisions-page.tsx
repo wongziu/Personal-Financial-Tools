@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ShieldAlertIcon } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { CalendarDaysIcon, FilterXIcon, ShieldAlertIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Row } from "@/lib/services";
-import { FieldLabel, HeaderHelp } from "@/components/help-tooltip";
+import { FieldLabel, HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { translateColumn, translateColumnHelp, translateEnum, type Language } from "@/lib/i18n";
+import { translateColumn, translateColumnHelp, translateEnum, translateUiHelp, type Language } from "@/lib/i18n";
+import { buildCalendarMonth, filterRowsByDate, getDefaultMonth, summarizeRows, type DateFilterMode } from "@/lib/module-interactions";
 
 const defaultDecision = {
   securityId: "US-AAPL",
@@ -43,14 +44,41 @@ const defaultDecision = {
   sourceIds: "SRC-2026-001"
 };
 
+function weekdayLabels(language: Language): string[] {
+  return language === "en-US" ? ["S", "M", "T", "W", "T", "F", "S"] : ["日", "一", "二", "三", "四", "五", "六"];
+}
+
 export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
   const router = useRouter();
   const { language, t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultDecision);
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("all");
+  const [selectedMonth, setSelectedMonth] = useState(() => getDefaultMonth(rows, "decision_time"));
+  const [selectedDay, setSelectedDay] = useState<string | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
   const label = (column: string) => translateColumn("trade_decisions", column, language);
   const help = (column: string) => translateColumnHelp("trade_decisions", column, language);
+  const currentDateRange =
+    dateFilterMode === "last30"
+      ? t.last30Days
+      : dateFilterMode === "month"
+        ? `${t.selectedMonth}: ${selectedMonth}`
+        : dateFilterMode === "day" && selectedDay
+          ? `${t.selectedDay}: ${selectedDay}`
+          : t.allDates;
+  const filteredRows = useMemo(
+    () =>
+      filterRowsByDate(rows, "decision_time", {
+        mode: dateFilterMode,
+        month: selectedMonth,
+        day: selectedDay
+      }),
+    [dateFilterMode, rows, selectedDay, selectedMonth]
+  );
+  const calendarDays = useMemo(() => buildCalendarMonth(rows, "decision_time", selectedMonth), [rows, selectedMonth]);
+  const summary = useMemo(() => summarizeRows(rows, filteredRows, "decision_time"), [filteredRows, rows]);
+  const weekDays = weekdayLabels(language);
 
   const setField = (field: keyof typeof defaultDecision, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -83,7 +111,10 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{t.tradeDecisions}</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            {t.tradeDecisions}
+            <HelpTooltip content={translateUiHelp("tradeDecisions.page", language)} label={t.tradeDecisions} />
+          </h1>
           <p className="text-sm text-muted-foreground">{t.weakRiskDescription}</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -96,7 +127,10 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
           <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
             <DialogHeader>
               <DialogTitle>{t.createDecision}</DialogTitle>
-              <DialogDescription>{t.riskCheck}</DialogDescription>
+              <DialogDescription className="flex items-center gap-1.5">
+                {t.riskCheck}
+                <HelpTooltip content={translateUiHelp("tradeDecisions.riskCheck", language)} label={t.riskCheck} />
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label={label("security_id")} help={help("security_id")} value={form.securityId} onChange={(value) => setField("securityId", value)} />
@@ -136,11 +170,157 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
         </Dialog>
       </div>
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardDescription>
+              <HeaderHelp label={t.totalRecords} help={translateUiHelp("module.totalRecords", language)} />
+            </CardDescription>
+            <CardTitle className="text-xl">{summary.total}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardDescription>
+              <HeaderHelp label={t.visibleRecords} help={translateUiHelp("module.visibleRecords", language)} />
+            </CardDescription>
+            <CardTitle className="text-xl">{summary.visible}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardDescription>
+              <HeaderHelp label={t.latestDate} help={translateUiHelp("module.latestDate", language)} />
+            </CardDescription>
+            <CardTitle className="text-xl">{summary.latestDate ?? "N/A"}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarDaysIcon className="size-4 text-primary" />
+              <HeaderHelp label={t.dateDimension} help={translateUiHelp("module.dateDimension", language)} />
+            </CardTitle>
+            <CardDescription>
+              {label("decision_time")} · {currentDateRange}
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setDateFilterMode("all");
+              setSelectedDay(undefined);
+            }}
+          >
+            <FilterXIcon data-icon="inline-start" />
+            {t.clearDateFilter}
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-4 xl:grid-cols-[280px_1fr]">
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3">
+            <div className="grid gap-1.5">
+              <div className="text-xs font-medium text-muted-foreground">
+                <HeaderHelp label={t.selectedMonth} help={translateUiHelp("module.selectedMonth", language)} />
+              </div>
+              <Input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => {
+                  setSelectedMonth(event.target.value);
+                  setSelectedDay(undefined);
+                  setDateFilterMode("month");
+                }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={dateFilterMode === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setDateFilterMode("all");
+                  setSelectedDay(undefined);
+                }}
+              >
+                {t.allDates}
+              </Button>
+              <Button
+                variant={dateFilterMode === "last30" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setDateFilterMode("last30");
+                  setSelectedDay(undefined);
+                }}
+              >
+                {t.last30Days}
+              </Button>
+              <Button
+                variant={dateFilterMode === "month" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setDateFilterMode("month");
+                  setSelectedDay(undefined);
+                }}
+              >
+                {t.selectedMonth}
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-md border p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium">
+                  <HeaderHelp label={t.calendarActivity} help={translateUiHelp("module.calendarActivity", language)} />
+                </div>
+                <div className="text-xs text-muted-foreground">{selectedMonth}</div>
+              </div>
+              <Badge variant="secondary">{currentDateRange}</Badge>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
+              {weekDays.map((day, index) => (
+                <div key={`${day}-${index}`} className="py-1">
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((day) => (
+                <button
+                  type="button"
+                  key={day.date}
+                  aria-label={`${day.date} ${day.count} ${t.recordsOnDate}`}
+                  style={{ gridColumnStart: day.day === 1 ? day.weekday + 1 : undefined }}
+                  onClick={() => {
+                    setSelectedDay(day.date);
+                    setDateFilterMode("day");
+                  }}
+                  className={[
+                    "flex min-h-12 flex-col items-start justify-between rounded-md border p-2 text-left text-xs transition-colors hover:border-primary hover:bg-primary/5",
+                    selectedDay === day.date ? "border-primary bg-primary/10 text-primary" : "bg-background",
+                    day.count > 0 ? "font-medium" : "text-muted-foreground"
+                  ].join(" ")}
+                >
+                  <span>{day.day}</span>
+                  <span className={day.count > 0 ? "rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground" : "text-[10px]"}>
+                    {day.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle>{t.tradeDecisions}</CardTitle>
+          <CardTitle>
+            <HeaderHelp label={t.tradeDecisions} help={translateUiHelp("module.table", language)} />
+          </CardTitle>
           <CardDescription>
-            {rows.length} {t.records}
+            {filteredRows.length} {t.records}
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -155,7 +335,7 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <TableRow key={String(row.id)}>
                   <TableCell>{String(row.id)}</TableCell>
                   <TableCell>{String(row.decision_time)}</TableCell>

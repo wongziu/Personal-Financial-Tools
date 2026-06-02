@@ -1,12 +1,13 @@
 "use client";
 
 import type { DashboardData } from "@/lib/services";
+import { HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { translateColumn, translateEnum } from "@/lib/i18n";
+import { translateColumn, translateColumnHelp, translateEnum, translateUiHelp } from "@/lib/i18n";
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("zh-CN", { style: "currency", currency }).format(value);
@@ -19,23 +20,28 @@ function percent(value: number) {
 export function DashboardView({ data }: { data: DashboardData }) {
   const { language, t } = useLanguage();
   const metricCards = [
-    { label: t.portfolioNetValue, value: money(data.metrics.portfolioNetValue, data.baseCurrency) },
-    { label: t.cashValue, value: money(data.metrics.cashValueBase, data.baseCurrency) },
-    { label: t.largestHolding, value: `${data.metrics.largestHoldingName} · ${percent(data.metrics.largestHoldingWeight)}` },
-    { label: t.maxTheme, value: `${data.metrics.maxThemeName} · ${percent(data.metrics.maxThemeWeight)}` }
+    { label: t.portfolioNetValue, value: money(data.metrics.portfolioNetValue, data.baseCurrency), helpKey: "dashboard.portfolioNetValue" },
+    { label: t.cashValue, value: money(data.metrics.cashValueBase, data.baseCurrency), helpKey: "dashboard.cashValue" },
+    { label: t.largestHolding, value: `${data.metrics.largestHoldingName} · ${percent(data.metrics.largestHoldingWeight)}`, helpKey: "dashboard.largestHolding" },
+    { label: t.maxTheme, value: `${data.metrics.maxThemeName} · ${percent(data.metrics.maxThemeWeight)}`, helpKey: "dashboard.maxTheme" }
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t.dashboard}</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+          {t.dashboard}
+          <HelpTooltip content={translateUiHelp("dashboard.page", language)} label={t.dashboard} />
+        </h1>
         <p className="text-sm text-muted-foreground">{t.holdingsAndNavDescription}</p>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {metricCards.map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="pb-2">
-              <CardDescription>{metric.label}</CardDescription>
+              <CardDescription>
+                <HeaderHelp label={metric.label} help={translateUiHelp(metric.helpKey, language)} />
+              </CardDescription>
               <CardTitle className="text-xl">{metric.value}</CardTitle>
             </CardHeader>
           </Card>
@@ -45,18 +51,23 @@ export function DashboardView({ data }: { data: DashboardData }) {
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>{t.holdingsAndNav}</CardTitle>
+            <CardTitle>
+              <HeaderHelp label={t.holdingsAndNav} help={translateUiHelp("dashboard.holdingsAndNav", language)} />
+            </CardTitle>
             <CardDescription>{t.holdingsAndNavDescription}</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{translateColumn("dashboard_positions", "security", language)}</TableHead>
-                  <TableHead>{translateColumn("dashboard_positions", "strategy", language)}</TableHead>
-                  <TableHead>{translateColumn("dashboard_positions", "quantity", language)}</TableHead>
-                  <TableHead>{translateColumn("dashboard_positions", "market_value", language)}</TableHead>
-                  <TableHead>{translateColumn("dashboard_positions", "weight", language)}</TableHead>
+                  {["security", "strategy", "quantity", "market_value", "weight"].map((column) => (
+                    <TableHead key={column}>
+                      <HeaderHelp
+                        label={translateColumn("dashboard_positions", column, language)}
+                        help={translateColumnHelp("dashboard_positions", column, language)}
+                      />
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -77,7 +88,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
         <div className="flex flex-col gap-4">
           <Card>
             <CardHeader>
-              <CardTitle>{t.riskWarnings}</CardTitle>
+              <CardTitle>
+                <HeaderHelp label={t.riskWarnings} help={translateUiHelp("dashboard.riskWarnings", language)} />
+              </CardTitle>
               <CardDescription>{t.weakRiskDescription}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
@@ -99,7 +112,9 @@ export function DashboardView({ data }: { data: DashboardData }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t.pendingExceptions}</CardTitle>
+              <CardTitle>
+                <HeaderHelp label={t.pendingExceptions} help={translateUiHelp("dashboard.pendingExceptions", language)} />
+              </CardTitle>
               <CardDescription>
                 {data.metrics.pendingExceptionCount} {t.records}
               </CardDescription>

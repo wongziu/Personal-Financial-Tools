@@ -18,11 +18,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { HelpTooltip } from "@/components/help-tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLanguage } from "@/components/language-provider";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { languageOptions, translateText, type Language } from "@/lib/i18n";
+import { languageOptions, translateText, translateUiHelp, type Language } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -98,6 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   ))}
                 </SelectContent>
               </Select>
+              <HelpTooltip content={translateUiHelp("app.language", language)} label={t.language} />
             </div>
             <ThemeToggle />
           </div>

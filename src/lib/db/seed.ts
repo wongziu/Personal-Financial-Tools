@@ -1,10 +1,24 @@
 import type { DatabaseContext } from "@/lib/db/client";
 
+const naturalKeys: Record<string, string[]> = {
+  market_prices: ["price_date", "security_id"],
+  fx_rates: ["rate_date", "from_currency", "to_currency"],
+  thesis_evidence: ["thesis_id", "source_id", "evidence_side"],
+  trade_decision_sources: ["decision_id", "source_id"]
+};
+
+function rowExists(database: DatabaseContext, table: string, keys: string[], row: Record<string, unknown>): boolean {
+  const whereClause = keys.map((key) => `${key} = @${key}`).join(" AND ");
+  const statement = database.sqlite.prepare(`SELECT 1 FROM ${table} WHERE ${whereClause} LIMIT 1`);
+  return statement.get(row) !== undefined;
+}
+
 function insertMany(database: DatabaseContext, table: string, rows: Array<Record<string, unknown>>): void {
   if (rows.length === 0) {
     return;
   }
 
+  const keys = naturalKeys[table];
   const columns = Object.keys(rows[0]);
   const placeholders = columns.map((column) => `@${column}`).join(", ");
   const statement = database.sqlite.prepare(
@@ -13,6 +27,9 @@ function insertMany(database: DatabaseContext, table: string, rows: Array<Record
 
   const transaction = database.sqlite.transaction((items: Array<Record<string, unknown>>) => {
     for (const item of items) {
+      if (keys && rowExists(database, table, keys, item)) {
+        continue;
+      }
       statement.run(item);
     }
   });
