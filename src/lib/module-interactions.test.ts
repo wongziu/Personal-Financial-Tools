@@ -1,6 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { buildCalendarMonth, filterRowsByDate, formatDateKey, getDateFields, getDefaultMonth, getLatestFxRates, summarizeRows } from "@/lib/module-interactions";
-import type { ModuleDefinition } from "@/lib/modules";
+import {
+  buildCalendarMonth,
+  filterRowsByDate,
+  formatDateKey,
+  getCalendarDateFields,
+  getDateFields,
+  getDefaultCalendarColumn,
+  getDefaultMonth,
+  getLatestFxRates,
+  summarizeRows
+} from "@/lib/module-interactions";
+import { moduleDefinitions, type ModuleDefinition } from "@/lib/modules";
 import type { Row } from "@/lib/services";
 
 const moduleDefinition = {
@@ -26,6 +36,20 @@ const rows: Row[] = [
 describe("module interaction helpers", () => {
   test("detects date fields from module metadata", () => {
     expect(getDateFields(moduleDefinition).map((field) => field.column)).toEqual(["trade_date"]);
+  });
+
+  test("only exposes calendar date fields for operational date modules", () => {
+    const accounts = moduleDefinitions.find((definition) => definition.id === "accounts");
+    const transactions = moduleDefinitions.find((definition) => definition.id === "transactions");
+    const theses = moduleDefinitions.find((definition) => definition.id === "theses");
+
+    expect(accounts).toBeDefined();
+    expect(transactions).toBeDefined();
+    expect(theses).toBeDefined();
+    expect(getDateFields(accounts!).map((field) => field.column)).toEqual(["initial_entry_date"]);
+    expect(getCalendarDateFields(accounts!)).toEqual([]);
+    expect(getCalendarDateFields(transactions!).map((field) => field.column)).toEqual(["trade_date"]);
+    expect(getDefaultCalendarColumn(theses!)).toBe("next_review_date");
   });
 
   test("normalizes date-like values", () => {

@@ -17,10 +17,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { translateColumn, translateColumnHelp, translateEnum, translateUiHelp, type Language } from "@/lib/i18n";
 import { buildCalendarMonth, filterRowsByDate, getDefaultMonth, summarizeRows, type DateFilterMode } from "@/lib/module-interactions";
+import type { ReferenceOption } from "@/lib/modules";
 
-const defaultDecision = {
-  securityId: "US-AAPL",
-  thesisId: "THS-2026-001",
+export interface TradeDecisionReferenceOptions {
+  securityId: ReferenceOption[];
+  thesisId: ReferenceOption[];
+  sourceIds: ReferenceOption[];
+}
+
+const defaultDecisionBase = {
+  securityId: "",
+  thesisId: "",
   strategyType: "Active",
   action: "Buy",
   currentPrice: "210",
@@ -41,18 +48,48 @@ const defaultDecision = {
   isRuleException: "false",
   emotionTag: "Calm",
   finalDecision: "Execute",
-  sourceIds: "SRC-2026-001"
+  sourceIds: ""
 };
 
 function weekdayLabels(language: Language): string[] {
   return language === "en-US" ? ["S", "M", "T", "W", "T", "F", "S"] : ["日", "一", "二", "三", "四", "五", "六"];
 }
 
-export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
+function firstMatchingBySecurity(options: ReferenceOption[], securityId: string): ReferenceOption | undefined {
+  if (!securityId) {
+    return options[0];
+  }
+  return options.find((option) => option.metadata.security_id === securityId);
+}
+
+function initialDecision(referenceOptions: TradeDecisionReferenceOptions): typeof defaultDecisionBase {
+  const securityId = referenceOptions.securityId[0]?.value ?? "";
+  const thesisId = firstMatchingBySecurity(referenceOptions.thesisId, securityId)?.value ?? "";
+  const sourceIds = firstMatchingBySecurity(referenceOptions.sourceIds, securityId)?.value ?? "";
+
+  return {
+    ...defaultDecisionBase,
+    securityId,
+    thesisId,
+    sourceIds
+  };
+}
+
+function selectedSourceIds(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+export function TradeDecisionsPage({
+  rows,
+  referenceOptions
+}: {
+  rows: Row[];
+  referenceOptions: TradeDecisionReferenceOptions;
+}) {
   const router = useRouter();
   const { language, t } = useLanguage();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(defaultDecision);
+  const [form, setForm] = useState(() => initialDecision(referenceOptions));
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("all");
   const [selectedMonth, setSelectedMonth] = useState(() => getDefaultMonth(rows, "decision_time"));
   const [selectedDay, setSelectedDay] = useState<string | undefined>(undefined);
@@ -79,9 +116,57 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
   const calendarDays = useMemo(() => buildCalendarMonth(rows, "decision_time", selectedMonth), [rows, selectedMonth]);
   const summary = useMemo(() => summarizeRows(rows, filteredRows, "decision_time"), [filteredRows, rows]);
   const weekDays = weekdayLabels(language);
+  const formLabel = (column: string) => {
+    if (column === "security_id") {
+      return language === "en-US" ? "Security" : language === "zh-TW" ? "標的" : "标的";
+    }
+    if (column === "thesis_id") {
+      return language === "en-US" ? "Thesis" : language === "zh-TW" ? "論點" : "论点";
+    }
+    if (column === "source_ids") {
+      return language === "en-US" ? "Sources" : language === "zh-TW" ? "資訊來源" : "信息来源";
+    }
+    return label(column);
+  };
+  const thesisOptions = useMemo(
+    () => referenceOptions.thesisId.filter((option) => !form.securityId || option.metadata.security_id === form.securityId),
+    [form.securityId, referenceOptions.thesisId]
+  );
+  const sourceOptions = useMemo(
+    () => referenceOptions.sourceIds.filter((option) => !form.securityId || option.metadata.security_id === form.securityId),
+    [form.securityId, referenceOptions.sourceIds]
+  );
 
-  const setField = (field: keyof typeof defaultDecision, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
+  const setDialogOpen = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setForm(initialDecision(referenceOptions));
+    }
+  };
+
+  const setField = (field: keyof typeof defaultDecisionBase, value: string) => {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "securityId") {
+        const matchingThesis = firstMatchingBySecurity(referenceOptions.thesisId, value);
+        const currentThesis = referenceOptions.thesisId.find((option) => option.value === current.thesisId);
+        if (!currentThesis || currentThesis.metadata.security_id !== value) {
+          next.thesisId = matchingThesis?.value ?? "";
+        }
+
+        const matchingSource = firstMatchingBySecurity(referenceOptions.sourceIds, value);
+        const currentSources = selectedSourceIds(current.sourceIds);
+        const hasMatchingSource = currentSources.some((sourceId) => {
+          const source = referenceOptions.sourceIds.find((option) => option.value === sourceId);
+          return source?.metadata.security_id === value;
+        });
+        if (!hasMatchingSource) {
+          next.sourceIds = matchingSource?.value ?? "";
+        }
+      }
+
+      return next;
+    });
   };
 
   const submit = () => {
@@ -91,7 +176,7 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          sourceIds: form.sourceIds.split(",").map((item) => item.trim()).filter(Boolean)
+          sourceIds: selectedSourceIds(form.sourceIds)
         })
       });
 
@@ -102,7 +187,7 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
 
       const result = (await response.json()) as { exceptionDraftId?: string };
       toast.success(result.exceptionDraftId ? `${t.formSaved}: ${result.exceptionDraftId}` : t.formSaved);
-      setOpen(false);
+      setDialogOpen(false);
       router.refresh();
     });
   };
@@ -117,7 +202,7 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
           </h1>
           <p className="text-sm text-muted-foreground">{t.weakRiskDescription}</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <ShieldAlertIcon data-icon="inline-start" />
@@ -127,39 +212,49 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
           <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
             <DialogHeader>
               <DialogTitle>{t.createDecision}</DialogTitle>
-              <DialogDescription className="flex items-center gap-1.5">
-                {t.riskCheck}
+              <DialogDescription>{t.riskCheck}</DialogDescription>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span>{t.riskCheck}</span>
                 <HelpTooltip content={translateUiHelp("tradeDecisions.riskCheck", language)} label={t.riskCheck} />
-              </DialogDescription>
+              </div>
             </DialogHeader>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label={label("security_id")} help={help("security_id")} value={form.securityId} onChange={(value) => setField("securityId", value)} />
-              <Field label={label("thesis_id")} help={help("thesis_id")} value={form.thesisId} onChange={(value) => setField("thesisId", value)} />
-              <SelectField language={language} label={label("strategy_type")} help={help("strategy_type")} value={form.strategyType} options={["Core", "Active", "Trading", "Experimental"]} onChange={(value) => setField("strategyType", value)} />
-              <SelectField language={language} label={label("action")} help={help("action")} value={form.action} options={["Buy", "Add", "Reduce", "Exit", "NoAction"]} onChange={(value) => setField("action", value)} />
-              <Field label={label("current_price")} help={help("current_price")} type="number" value={form.currentPrice} onChange={(value) => setField("currentPrice", value)} />
-              <Field label={label("planned_amount_base")} help={help("planned_amount_base")} type="number" value={form.plannedAmountBase} onChange={(value) => setField("plannedAmountBase", value)} />
-              <Field label={label("planned_price_min")} help={help("planned_price_min")} type="number" value={form.plannedPriceMin} onChange={(value) => setField("plannedPriceMin", value)} />
-              <Field label={label("planned_price_max")} help={help("planned_price_max")} type="number" value={form.plannedPriceMax} onChange={(value) => setField("plannedPriceMax", value)} />
-              <Field label={label("pre_trade_weight")} help={help("pre_trade_weight")} type="number" value={form.preTradeWeight} onChange={(value) => setField("preTradeWeight", value)} />
-              <Field label={label("post_trade_weight")} help={help("post_trade_weight")} type="number" value={form.postTradeWeight} onChange={(value) => setField("postTradeWeight", value)} />
-              <Field label={label("max_allowed_weight")} help={help("max_allowed_weight")} type="number" value={form.maxAllowedWeight} onChange={(value) => setField("maxAllowedWeight", value)} />
-              <Field label={label("similar_theme_exposure")} help={help("similar_theme_exposure")} type="number" value={form.similarThemeExposure} onChange={(value) => setField("similarThemeExposure", value)} />
-              <Field label={label("trigger")} help={help("trigger")} value={form.trigger} onChange={(value) => setField("trigger", value)} />
-              <Field label={label("expected_return_source")} help={help("expected_return_source")} value={form.expectedReturnSource} onChange={(value) => setField("expectedReturnSource", value)} />
-              <Field label={label("downside_loss_base")} help={help("downside_loss_base")} type="number" value={form.downsideLossBase} onChange={(value) => setField("downsideLossBase", value)} />
-              <SelectField language={language} label={label("emotion_tag")} help={help("emotion_tag")} value={form.emotionTag} options={["Calm", "FOMO", "RevengeTrade", "Fear", "RecoverLoss", "Other"]} onChange={(value) => setField("emotionTag", value)} />
-              <SelectField language={language} label={label("final_decision")} help={help("final_decision")} value={form.finalDecision} options={["Execute", "Abandon", "Delay"]} onChange={(value) => setField("finalDecision", value)} />
-              <Field label={label("source_ids")} help={help("source_ids")} value={form.sourceIds} onChange={(value) => setField("sourceIds", value)} />
+              <ReferenceSelectField label={formLabel("security_id")} help={help("security_id")} value={form.securityId} options={referenceOptions.securityId} required onChange={(value) => setField("securityId", value)} />
+              <ReferenceSelectField label={formLabel("thesis_id")} help={help("thesis_id")} value={form.thesisId} options={thesisOptions} onChange={(value) => setField("thesisId", value)} />
+              <SelectField language={language} label={label("strategy_type")} help={help("strategy_type")} value={form.strategyType} options={["Core", "Active", "Trading", "Experimental"]} required onChange={(value) => setField("strategyType", value)} />
+              <SelectField language={language} label={label("action")} help={help("action")} value={form.action} options={["Buy", "Add", "Reduce", "Exit", "NoAction"]} required onChange={(value) => setField("action", value)} />
+              <Field label={label("current_price")} help={help("current_price")} type="number" value={form.currentPrice} required onChange={(value) => setField("currentPrice", value)} />
+              <Field label={label("planned_amount_base")} help={help("planned_amount_base")} type="number" value={form.plannedAmountBase} required onChange={(value) => setField("plannedAmountBase", value)} />
+              <Field label={label("planned_price_min")} help={help("planned_price_min")} type="number" value={form.plannedPriceMin} required onChange={(value) => setField("plannedPriceMin", value)} />
+              <Field label={label("planned_price_max")} help={help("planned_price_max")} type="number" value={form.plannedPriceMax} required onChange={(value) => setField("plannedPriceMax", value)} />
+              <Field label={label("pre_trade_weight")} help={help("pre_trade_weight")} type="number" value={form.preTradeWeight} required onChange={(value) => setField("preTradeWeight", value)} />
+              <Field label={label("post_trade_weight")} help={help("post_trade_weight")} type="number" value={form.postTradeWeight} required onChange={(value) => setField("postTradeWeight", value)} />
+              <Field label={label("max_allowed_weight")} help={help("max_allowed_weight")} type="number" value={form.maxAllowedWeight} required onChange={(value) => setField("maxAllowedWeight", value)} />
+              <Field label={label("similar_theme_exposure")} help={help("similar_theme_exposure")} type="number" value={form.similarThemeExposure} required onChange={(value) => setField("similarThemeExposure", value)} />
+              <Field label={label("trigger")} help={help("trigger")} value={form.trigger} required onChange={(value) => setField("trigger", value)} />
+              <Field label={label("expected_return_source")} help={help("expected_return_source")} value={form.expectedReturnSource} required onChange={(value) => setField("expectedReturnSource", value)} />
+              <Field label={label("downside_loss_base")} help={help("downside_loss_base")} type="number" value={form.downsideLossBase} required onChange={(value) => setField("downsideLossBase", value)} />
+              <SelectField language={language} label={label("emotion_tag")} help={help("emotion_tag")} value={form.emotionTag} options={["Calm", "FOMO", "RevengeTrade", "Fear", "RecoverLoss", "Other"]} required onChange={(value) => setField("emotionTag", value)} />
+              <SelectField language={language} label={label("final_decision")} help={help("final_decision")} value={form.finalDecision} options={["Execute", "Abandon", "Delay"]} required onChange={(value) => setField("finalDecision", value)} />
               <div className="md:col-span-3">
-                <TextField label={label("main_risks")} help={help("main_risks")} value={form.mainRisks} onChange={(value) => setField("mainRisks", value)} />
+                <SourceChecklistField
+                  label={formLabel("source_ids")}
+                  help={help("source_ids")}
+                  noRecordsLabel={t.noRecords}
+                  value={form.sourceIds}
+                  options={sourceOptions}
+                  onChange={(value) => setField("sourceIds", value)}
+                />
               </div>
               <div className="md:col-span-3">
-                <TextField label={label("stop_loss_or_invalidation")} help={help("stop_loss_or_invalidation")} value={form.stopLossOrInvalidation} onChange={(value) => setField("stopLossOrInvalidation", value)} />
+                <TextField label={label("main_risks")} help={help("main_risks")} value={form.mainRisks} required onChange={(value) => setField("mainRisks", value)} />
+              </div>
+              <div className="md:col-span-3">
+                <TextField label={label("stop_loss_or_invalidation")} help={help("stop_loss_or_invalidation")} value={form.stopLossOrInvalidation} required onChange={(value) => setField("stopLossOrInvalidation", value)} />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 {t.cancel}
               </Button>
               <Button onClick={submit} disabled={isPending}>
@@ -356,31 +451,120 @@ export function TradeDecisionsPage({ rows }: { rows: Row[] }) {
   );
 }
 
+function ReferenceSelectField({
+  label,
+  help,
+  value,
+  options,
+  required,
+  onChange
+}: {
+  label: string;
+  help: string;
+  value: string;
+  options: ReferenceOption[];
+  required?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <FieldLabel label={label} help={help} required={required} />
+      <Select value={value} onValueChange={onChange} disabled={options.length === 0}>
+        <SelectTrigger aria-label={label}>
+          <SelectValue placeholder={label} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem value={option.value} key={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function SourceChecklistField({
+  label,
+  help,
+  noRecordsLabel,
+  value,
+  options,
+  required,
+  onChange
+}: {
+  label: string;
+  help: string;
+  noRecordsLabel: string;
+  value: string;
+  options: ReferenceOption[];
+  required?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const selected = new Set(selectedSourceIds(value));
+
+  const toggleSource = (sourceId: string, checked: boolean) => {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(sourceId);
+    } else {
+      next.delete(sourceId);
+    }
+    onChange([...next].join(","));
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <FieldLabel label={label} help={help} required={required} />
+      <div className="grid max-h-36 gap-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+        {options.length === 0 ? (
+          <div className="text-sm text-muted-foreground">{noRecordsLabel}</div>
+        ) : (
+          options.map((option) => (
+            <label key={option.value} className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={selected.has(option.value)}
+                onChange={(event) => toggleSource(option.value, event.target.checked)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   help,
   value,
   onChange,
-  type = "text"
+  type = "text",
+  required
 }: {
   label: string;
   help: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  required?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <FieldLabel label={label} help={help} />
+      <FieldLabel label={label} help={help} required={required} />
       <Input type={type} step={type === "number" ? "any" : undefined} value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
 }
 
-function TextField({ label, help, value, onChange }: { label: string; help: string; value: string; onChange: (value: string) => void }) {
+function TextField({ label, help, value, required, onChange }: { label: string; help: string; value: string; required?: boolean; onChange: (value: string) => void }) {
   return (
     <div className="flex flex-col gap-2">
-      <FieldLabel label={label} help={help} />
+      <FieldLabel label={label} help={help} required={required} />
       <Textarea value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
@@ -392,6 +576,7 @@ function SelectField({
   help,
   value,
   options,
+  required,
   onChange
 }: {
   language: Language;
@@ -399,11 +584,12 @@ function SelectField({
   help: string;
   value: string;
   options: string[];
+  required?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <FieldLabel label={label} help={help} />
+      <FieldLabel label={label} help={help} required={required} />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger>
           <SelectValue />

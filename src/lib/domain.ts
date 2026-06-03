@@ -122,3 +122,36 @@ export interface RiskEvaluationResult {
   requiresExceptionDraft: boolean;
   warnings: RiskWarning[];
 }
+
+export interface AccountReference {
+  id: string;
+  institutionName: string;
+  includeInNetWorth: boolean;
+  initialEntryDate: string;
+}
+
+export interface AccountNavAnchorInput {
+  id?: number;
+  accountId: string;
+  anchorDate: string;
+  netAssetValueBase: number;
+  source: string;
+  notes?: string | null;
+}
+
+export interface AccountDailyPerformanceRow {
+  accountId: string;
+  accountName: string;
+  snapshotDate: string;
+  cashValueBase: number;
+  marketValueBase: number;
+  computedNetAssetValueBase: number;
+  netAssetValueBase: number;
+  externalCashflowBase: number;
+  dailyPnlBase: number;
+  cumulativePnlBase: number;
+  dailyReturn: number | null;
+  isAnchored: boolean;
+  anchorSource: string | null;
+  anchorNotes: string | null;
+}

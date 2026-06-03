@@ -34,6 +34,7 @@ export interface Dictionary {
   formSaved: string;
   formError: string;
   portfolioNetValue: string;
+  asOfDate: string;
   cashValue: string;
   largestHolding: string;
   maxTheme: string;
@@ -68,6 +69,21 @@ export interface Dictionary {
   manualQuickSet: string;
   saveRate: string;
   recordsOnDate: string;
+  actions: string;
+  edit: string;
+  editRecord: string;
+  recordUpdated: string;
+  recordLocked: string;
+  details: string;
+  linkedAccount: string;
+  securityDetail: string;
+  relatedTransactions: string;
+  priceRecords: string;
+  priceQueue: string;
+  priceQueueDescription: string;
+  priceDate: string;
+  savePrice: string;
+  allPricesEntered: string;
 }
 
 const simplifiedToTraditional = OpenCC.Converter({ from: "cn", to: "tw" });
@@ -98,6 +114,7 @@ const zhCN: Dictionary = {
   formSaved: "记录已保存",
   formError: "保存失败",
   portfolioNetValue: "组合净值",
+  asOfDate: "数据日期",
   cashValue: "现金价值",
   largestHolding: "最大持仓",
   maxTheme: "最大主题暴露",
@@ -131,7 +148,22 @@ const zhCN: Dictionary = {
   asOf: "截至",
   manualQuickSet: "手动快速设置",
   saveRate: "保存汇率",
-  recordsOnDate: "条记录"
+  recordsOnDate: "条记录",
+  actions: "操作",
+  edit: "编辑",
+  editRecord: "编辑记录",
+  recordUpdated: "记录已更新",
+  recordLocked: "锁定",
+  details: "详情",
+  linkedAccount: "关联账户",
+  securityDetail: "标的详情",
+  relatedTransactions: "关联交易流水",
+  priceRecords: "价格记录",
+  priceQueue: "待补价格",
+  priceQueueDescription: "按日期列出需要录入价格的标的：关联账户纳入净值、投资状态为允许或观察、非现金资产且当日缺少价格。",
+  priceDate: "补价日期",
+  savePrice: "保存价格",
+  allPricesEntered: "该日期暂无待补价格"
 };
 
 const enUS: Dictionary = {
@@ -160,6 +192,7 @@ const enUS: Dictionary = {
   formSaved: "Record saved",
   formError: "Save failed",
   portfolioNetValue: "Portfolio Net Value",
+  asOfDate: "Data Date",
   cashValue: "Cash Value",
   largestHolding: "Largest Holding",
   maxTheme: "Max Theme Exposure",
@@ -194,7 +227,22 @@ const enUS: Dictionary = {
   asOf: "As of",
   manualQuickSet: "Manual quick set",
   saveRate: "Save Rate",
-  recordsOnDate: "records"
+  recordsOnDate: "records",
+  actions: "Actions",
+  edit: "Edit",
+  editRecord: "Edit Record",
+  recordUpdated: "Record updated",
+  recordLocked: "Locked",
+  details: "Details",
+  linkedAccount: "Linked Account",
+  securityDetail: "Security Detail",
+  relatedTransactions: "Related Transactions",
+  priceRecords: "Price Records",
+  priceQueue: "Missing Prices",
+  priceQueueDescription: "Shows securities that need prices on the selected date: linked NAV account, allowed or watch status, non-cash asset, and no price for the date.",
+  priceDate: "Price Date",
+  savePrice: "Save Price",
+  allPricesEntered: "No missing prices for this date"
 };
 
 const zhTW = Object.fromEntries(
@@ -213,16 +261,19 @@ const tableColumns: Record<string, Record<string, { zh: string; en: string }>> =
     institution_name: { zh: "机构名称", en: "Institution" },
     account_type: { zh: "账户类型", en: "Account Type" },
     market: { zh: "市场", en: "Market" },
+    supported_markets: { zh: "支持市场", en: "Supported Markets" },
     currency: { zh: "币种", en: "Currency" },
     include_in_net_worth: { zh: "纳入净值", en: "Included in NAV" }
   },
   securities: {
     id: { zh: "标的 ID", en: "Security ID" },
+    account_id: { zh: "关联账户", en: "Linked Account" },
     name: { zh: "标的名称", en: "Security Name" },
     ticker: { zh: "交易代码", en: "Ticker" },
     asset_type: { zh: "资产类型", en: "Asset Type" },
     market: { zh: "市场", en: "Market" },
     currency: { zh: "交易币种", en: "Currency" },
+    liquidity_level: { zh: "流动性", en: "Liquidity" },
     investment_status: { zh: "投资状态", en: "Investment Status" }
   },
   transactions: {
@@ -340,6 +391,10 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     zh: "组合内所有纳入净值账户的持仓市值和现金折算后的合计值。",
     en: "Total converted value of holdings and cash for accounts included in NAV."
   },
+  "dashboard.asOfDate": {
+    zh: "仪表盘计算采用的价格日期。系统会使用当前已录入价格中的最新日期重新计算。",
+    en: "Price date used for dashboard calculations. The system recomputes from the latest entered market date."
+  },
   "dashboard.cashValue": {
     zh: "按账户和币种汇总现金余额，再折算为基准货币后的金额。",
     en: "Cash balances grouped by account and currency, converted into the base currency."
@@ -444,6 +499,10 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     zh: "保存后会新增一条汇率记录，并刷新当前汇率列表。",
     en: "Saving creates a new FX rate record and refreshes the current list."
   },
+  "prices.queue": {
+    zh: "价格表以日期和标的为维度。创建标的并关联纳入净值账户后，只要标的可投资且当日缺少价格，就会出现在这里。",
+    en: "Prices are keyed by date and security. Once a security is linked to an included account, investable names without a same-day price appear here."
+  },
   "tradeDecisions.page": {
     zh: "事前记录交易理由、预期仓位、悲观损失和风控结果，形成交易闭环。",
     en: "Record pre-trade rationale, expected weights, downside loss, and risk results for the trading loop."
@@ -463,6 +522,82 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
   "app.language": {
     zh: "切换界面语言。代码和数据字段保持英文，界面文案支持简体、繁体和英文。",
     en: "Switch display language. Code and data fields stay English while UI copy supports Simplified, Traditional, and English."
+  },
+  "accountCalendar.page": {
+    zh: "账户日历不是账户主数据日历，而是账户每日净值和日盈亏的表现视图。所有数值按已结算交易、现金流、价格、汇率和校准净值实时重算。",
+    en: "The account calendar is a daily performance view, not a master-data calendar. Values recompute from settled trades, cashflows, prices, FX, and NAV anchors."
+  },
+  "accountCalendar.dailyNav": {
+    zh: "所选账户在最新数据日的账户净值。若该日有校准净值，则优先使用校准值。",
+    en: "Account NAV on the latest data date. If a same-day anchor exists, the anchored NAV is used."
+  },
+  "accountCalendar.dailyPnl": {
+    zh: "当日净值减前一日净值，再扣除当日外部现金流。入金和出金不计入投资盈亏。",
+    en: "Current NAV minus prior-day NAV, excluding same-day external cashflow. Deposits and withdrawals are not investment P&L."
+  },
+  "accountCalendar.externalCashflow": {
+    zh: "当日来自组合外部的资金变动，例如入金或出金，用于从日盈亏中剔除资金进出影响。",
+    en: "Same-day capital movement from outside the portfolio, such as deposits or withdrawals, excluded from daily P&L."
+  },
+  "accountCalendar.anchoredDays": {
+    zh: "所选范围内存在手工校准净值的账户日期数量，用于识别哪些日期已按对账单修正。",
+    en: "Number of account-date rows with manual NAV anchors in the selected scope."
+  },
+  "accountCalendar.filters": {
+    zh: "选择账户和月份后，日历和列表会基于已保存来源数据实时重算。",
+    en: "Choose an account and month; the calendar and table recompute from saved source data."
+  },
+  "accountCalendar.accountFilter": {
+    zh: "选择单一账户查看其每日净值和盈亏；全部账户会按日期合计。",
+    en: "Choose one account for daily NAV/P&L, or all accounts for date-level totals."
+  },
+  "accountCalendar.month": {
+    zh: "控制日历展示月份。该月份内没有来源数据的日期会显示为空。",
+    en: "Controls the displayed calendar month. Dates without source data remain empty."
+  },
+  "accountCalendar.anchorForm": {
+    zh: "录入某账户某日的对账净值。保存后同一账户同一日期会被更新，并触发账户日历重新计算。",
+    en: "Enter reconciled NAV for one account on one date. Saving updates that account-date and triggers recomputation."
+  },
+  "accountCalendar.grid": {
+    zh: "每个日期展示净值、日盈亏和校准状态。点击日期可筛选下方明细。",
+    en: "Each day shows NAV, daily P&L, and anchor status. Click a day to filter the detail table."
+  },
+  "accountCalendar.dateColumn": {
+    zh: "净值与盈亏归属的日期，按自然日计算。",
+    en: "The calendar date to which NAV and P&L belong."
+  },
+  "accountCalendar.accountColumn": {
+    zh: "该行所属账户。全部账户视图下仍保留账户级明细，便于定位问题。",
+    en: "The account for this row. All-account view still keeps account-level detail for diagnosis."
+  },
+  "accountCalendar.navColumn": {
+    zh: "账户当日净值，等于现金价值加持仓市值；若录入校准净值，则使用校准值。",
+    en: "Daily account NAV: cash value plus holding market value; anchored NAV overrides computed NAV."
+  },
+  "accountCalendar.pnlColumn": {
+    zh: "日盈亏 = 当日净值 - 前日净值 - 当日外部现金流。",
+    en: "Daily P&L = current NAV - prior NAV - same-day external cashflow."
+  },
+  "accountCalendar.returnColumn": {
+    zh: "日盈亏除以前一日净值。首日或前日净值为零时不展示。",
+    en: "Daily P&L divided by prior-day NAV. Hidden when prior NAV is missing or zero."
+  },
+  "accountCalendar.cashflowColumn": {
+    zh: "当日外部入金或出金，作为资金进出从投资盈亏中剔除。",
+    en: "Same-day external deposit or withdrawal, excluded from investment P&L."
+  },
+  "accountCalendar.marketColumn": {
+    zh: "当日持仓按最新可用价格和汇率折算的市值；缺少价格时暂按成本口径兜底。",
+    en: "Holding value converted by latest available price and FX; falls back to cost when price is missing."
+  },
+  "accountCalendar.cashColumn": {
+    zh: "由现金流和已结算交易推算出的账户现金价值，按基准货币展示。",
+    en: "Account cash value derived from cashflows and settled trades, shown in base currency."
+  },
+  "accountCalendar.anchorColumn": {
+    zh: "标记该日是否使用了手工校准净值。校准会影响当日及相邻日期的日盈亏。",
+    en: "Marks whether a manual NAV anchor is used. Anchors affect same-day and adjacent daily P&L."
   }
 };
 
@@ -480,8 +615,20 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "Classifies cash, margin, fund, bank cash, or other account types."
   },
   market: {
-    zh: "该账户或标的主要交易的市场，用于后续查询、分类和风险汇总。",
-    en: "Primary trading market, used for filtering, classification, and risk aggregation."
+    zh: "兼容旧数据的默认市场。账户真实可交易范围以支持市场为准，标的市场仍由标的自身决定。",
+    en: "Legacy default market. Account trading capability is defined by supported markets, while security market remains security-specific."
+  },
+  supported_markets: {
+    zh: "该账户可交易或可录入的市场，可多选。后续标的、交易和账户表现会按实际标的市场统计。",
+    en: "Markets this account can trade or record. Select multiple when applicable; reporting still uses each security's actual market."
+  },
+  industry_level_1: {
+    zh: "一级行业使用系统约定枚举，便于跨 A 股、港股、美股和基金理财统一统计。",
+    en: "Level-1 industry uses a system enum so A-shares, HK, US, funds, and wealth products can be aggregated consistently."
+  },
+  industry_level_2: {
+    zh: "二级行业会跟随一级行业联动筛选，用于更细的行业暴露和复盘分析。",
+    en: "Level-2 industry options are filtered by level-1 industry for exposure and review analysis."
   },
   currency: {
     zh: "原始交易或计价币种。非 CNY 金额会按录入汇率折算为基准货币。",
@@ -519,21 +666,17 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     zh: "标的资产类别，会影响持仓分类、统计口径和风险展示。",
     en: "Asset class used for holding classification, reporting, and risk views."
   },
-  industry_level_1: {
-    zh: "一级行业分类，用于组合行业暴露和查询筛选。",
-    en: "Top-level industry classification for exposure analysis and filtering."
-  },
-  industry_level_2: {
-    zh: "二级行业分类，用于更细粒度的行业暴露和查询筛选。",
-    en: "Second-level industry classification for more granular exposure analysis."
-  },
   risk_theme_tags: {
     zh: "风险主题标签，多个标签用逗号分隔，例如 AI Capex, USD。",
     en: "Risk theme tags separated by commas, for example AI Capex, USD."
   },
   liquidity_level: {
-    zh: "对标的流动性的主观分级，用于交易前风险判断。",
-    en: "Subjective liquidity tier used for pre-trade risk judgment."
+    zh: "系统根据资产类型和锁定期自动判断。股票、ETF、黄金和现金默认为高流动性；主动基金和债券按锁定期计算。",
+    en: "Calculated from asset type and lock-up days. Stocks, ETFs, gold, and cash default to high liquidity; active funds and bonds are derived from lock-up days."
+  },
+  lockup_days: {
+    zh: "主动基金、债券和理财类标的需要填写锁定或最短持有天数；系统据此推导流动性。",
+    en: "Enter lock-up or minimum holding days for active funds, bonds, and wealth products; the system derives liquidity from it."
   },
   investment_status: {
     zh: "控制标的是否允许进入交易决策；禁止状态应避免新增买入。",
@@ -560,12 +703,12 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "Actual execution time, useful for reviewing market context."
   },
   account_id: {
-    zh: "关联账户 ID，用于定位资金来源、现金余额和账户维度统计。",
-    en: "Linked account ID for cash source, balances, and account-level reporting."
+    zh: "选择账户名称，用于定位资金来源、现金余额和账户维度统计。",
+    en: "Choose the account name used for cash source, balances, and account-level reporting."
   },
   security_id: {
-    zh: "关联标的 ID，必须与标的库中的 ID 保持一致。",
-    en: "Linked security ID; it should match an existing security record."
+    zh: "选择标的名称；系统会自动保存对应的内部标识并保持账户关系正确。",
+    en: "Choose the security name; the system stores the internal identifier and keeps account relationships consistent."
   },
   strategy_type: {
     zh: "交易或论点所属策略类型，用于区分核心、主动、交易和实验仓位。",
@@ -636,16 +779,16 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "Classifies deposits, withdrawals, dividends, interest, fees, splits, rights issues, or FX."
   },
   amount: {
-    zh: "现金流原币金额。流入为正，流出为负或按类型规则处理。",
-    en: "Cashflow amount in original currency. Inflows are positive; outflows follow type rules."
+    zh: "现金流原币金额。按正数填写，系统按现金流类型判断方向。",
+    en: "Cashflow amount in original currency. Enter a positive amount; the system derives direction from type."
   },
   is_external: {
-    zh: "标记是否来自组合外部资金变动，如入金或出金。",
-    en: "Marks whether the movement comes from outside the portfolio, such as deposits or withdrawals."
+    zh: "系统根据类型判断是否为组合外部资金变动；入金和出金会从日盈亏中剔除。",
+    en: "Derived from type. Deposits and withdrawals are external capital flows excluded from daily P&L."
   },
   is_investment_income: {
-    zh: "标记该现金流是否计入投资收益，例如分红或利息。",
-    en: "Marks whether the cashflow counts as investment income, such as dividends or interest."
+    zh: "系统根据类型判断是否计入投资收益；V1 中分红和利息计入收益。",
+    en: "Derived from type. In V1, dividends and interest count as investment income."
   },
   price_date: {
     zh: "价格对应日期，用于按日期生成持仓和净值快照。",
@@ -730,6 +873,15 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
 };
 
 const enums: Record<string, { zh: string; en: string }> = {
+  cash: { zh: "现金", en: "Cash" },
+  margin: { zh: "融资/保证金", en: "Margin" },
+  fund: { zh: "基金/理财", en: "Fund / Wealth Management" },
+  bank_cash: { zh: "银行现金", en: "Bank Cash" },
+  pension: { zh: "养老金", en: "Pension" },
+  Margin: { zh: "融资/保证金", en: "Margin" },
+  Fund: { zh: "基金/理财", en: "Fund / Wealth Management" },
+  BankCash: { zh: "银行现金", en: "Bank Cash" },
+  Pension: { zh: "养老金", en: "Pension" },
   Allowed: { zh: "允许", en: "Allowed" },
   Watch: { zh: "观察", en: "Watch" },
   Prohibited: { zh: "禁止", en: "Prohibited" },
@@ -743,6 +895,96 @@ const enums: Record<string, { zh: string; en: string }> = {
   HK: { zh: "港股", en: "HK" },
   US: { zh: "美股", en: "US" },
   MutualFund: { zh: "场外基金", en: "Mutual Fund" },
+  InformationTechnology: { zh: "信息技术", en: "Information Technology" },
+  CommunicationServices: { zh: "通信服务", en: "Communication Services" },
+  ConsumerDiscretionary: { zh: "可选消费", en: "Consumer Discretionary" },
+  ConsumerStaples: { zh: "日常消费", en: "Consumer Staples" },
+  HealthCare: { zh: "医疗保健", en: "Health Care" },
+  Financials: { zh: "金融", en: "Financials" },
+  Industrials: { zh: "工业", en: "Industrials" },
+  Energy: { zh: "能源", en: "Energy" },
+  Materials: { zh: "材料", en: "Materials" },
+  Utilities: { zh: "公用事业", en: "Utilities" },
+  RealEstate: { zh: "房地产", en: "Real Estate" },
+  FixedIncome: { zh: "固定收益", en: "Fixed Income" },
+  BroadMarket: { zh: "宽基指数", en: "Broad Market" },
+  MultiAsset: { zh: "多资产", en: "Multi-Asset" },
+  CashAndMoneyMarket: { zh: "现金及货币市场", en: "Cash & Money Market" },
+  Unclassified: { zh: "待分类", en: "Unclassified" },
+  OtherIndustry: { zh: "其他行业", en: "Other Industry" },
+  Software: { zh: "软件", en: "Software" },
+  Hardware: { zh: "硬件", en: "Hardware" },
+  Semiconductors: { zh: "半导体", en: "Semiconductors" },
+  ITServices: { zh: "IT 服务", en: "IT Services" },
+  InternetPlatforms: { zh: "互联网平台", en: "Internet Platforms" },
+  OtherTechnology: { zh: "其他科技", en: "Other Technology" },
+  Telecom: { zh: "电信", en: "Telecom" },
+  Media: { zh: "媒体", en: "Media" },
+  Entertainment: { zh: "娱乐", en: "Entertainment" },
+  InteractiveMedia: { zh: "互动媒体", en: "Interactive Media" },
+  OtherCommunicationServices: { zh: "其他通信服务", en: "Other Communication Services" },
+  Automobiles: { zh: "汽车", en: "Automobiles" },
+  ConsumerDurables: { zh: "耐用消费品", en: "Consumer Durables" },
+  DiscretionaryRetail: { zh: "可选零售", en: "Discretionary Retail" },
+  TravelLeisure: { zh: "旅游休闲", en: "Travel & Leisure" },
+  Restaurants: { zh: "餐饮", en: "Restaurants" },
+  OtherDiscretionary: { zh: "其他可选消费", en: "Other Discretionary" },
+  FoodBeverage: { zh: "食品饮料", en: "Food & Beverage" },
+  HouseholdProducts: { zh: "家庭用品", en: "Household Products" },
+  StaplesRetail: { zh: "必需消费零售", en: "Staples Retail" },
+  Agriculture: { zh: "农业", en: "Agriculture" },
+  OtherStaples: { zh: "其他日常消费", en: "Other Staples" },
+  Pharmaceuticals: { zh: "制药", en: "Pharmaceuticals" },
+  Biotechnology: { zh: "生物科技", en: "Biotechnology" },
+  MedicalDevices: { zh: "医疗器械", en: "Medical Devices" },
+  HealthCareServices: { zh: "医疗服务", en: "Health Care Services" },
+  OtherHealthCare: { zh: "其他医疗", en: "Other Health Care" },
+  Banks: { zh: "银行", en: "Banks" },
+  Insurance: { zh: "保险", en: "Insurance" },
+  Brokerage: { zh: "券商", en: "Brokerage" },
+  AssetManagement: { zh: "资产管理", en: "Asset Management" },
+  Fintech: { zh: "金融科技", en: "Fintech" },
+  OtherFinancials: { zh: "其他金融", en: "Other Financials" },
+  CapitalGoods: { zh: "资本品", en: "Capital Goods" },
+  Transportation: { zh: "交通运输", en: "Transportation" },
+  CommercialServices: { zh: "商业服务", en: "Commercial Services" },
+  AerospaceDefense: { zh: "航空航天与国防", en: "Aerospace & Defense" },
+  OtherIndustrials: { zh: "其他工业", en: "Other Industrials" },
+  OilGas: { zh: "石油天然气", en: "Oil & Gas" },
+  Renewables: { zh: "可再生能源", en: "Renewables" },
+  EnergyEquipment: { zh: "能源设备", en: "Energy Equipment" },
+  OtherEnergy: { zh: "其他能源", en: "Other Energy" },
+  Chemicals: { zh: "化工", en: "Chemicals" },
+  MetalsMining: { zh: "金属矿业", en: "Metals & Mining" },
+  ConstructionMaterials: { zh: "建材", en: "Construction Materials" },
+  PaperPackaging: { zh: "纸业包装", en: "Paper & Packaging" },
+  OtherMaterials: { zh: "其他材料", en: "Other Materials" },
+  ElectricUtilities: { zh: "电力公用事业", en: "Electric Utilities" },
+  GasUtilities: { zh: "燃气公用事业", en: "Gas Utilities" },
+  WaterUtilities: { zh: "水务公用事业", en: "Water Utilities" },
+  PowerGeneration: { zh: "发电", en: "Power Generation" },
+  OtherUtilities: { zh: "其他公用事业", en: "Other Utilities" },
+  PropertyDevelopment: { zh: "地产开发", en: "Property Development" },
+  REITs: { zh: "REITs", en: "REITs" },
+  PropertyServices: { zh: "物业服务", en: "Property Services" },
+  OtherRealEstate: { zh: "其他房地产", en: "Other Real Estate" },
+  GovernmentBond: { zh: "政府债", en: "Government Bond" },
+  CreditBond: { zh: "信用债", en: "Credit Bond" },
+  BondFund: { zh: "债券基金", en: "Bond Fund" },
+  BankWealthManagement: { zh: "银行理财", en: "Bank Wealth Management" },
+  OtherFixedIncome: { zh: "其他固定收益", en: "Other Fixed Income" },
+  BroadIndex: { zh: "宽基指数", en: "Broad Index" },
+  IndexETF: { zh: "指数 ETF", en: "Index ETF" },
+  OtherBroadMarket: { zh: "其他宽基", en: "Other Broad Market" },
+  BalancedFund: { zh: "平衡型基金", en: "Balanced Fund" },
+  FOF: { zh: "FOF", en: "FOF" },
+  OtherMultiAsset: { zh: "其他多资产", en: "Other Multi-Asset" },
+  CashSubIndustry: { zh: "现金", en: "Cash" },
+  MoneyMarketFund: { zh: "货币基金", en: "Money Market Fund" },
+  BankDeposit: { zh: "银行存款", en: "Bank Deposit" },
+  OtherCash: { zh: "其他现金类", en: "Other Cash" },
+  UnclassifiedSubIndustry: { zh: "待分类", en: "Unclassified" },
+  OtherSubIndustry: { zh: "其他细分行业", en: "Other Sub-Industry" },
   Core: { zh: "核心配置", en: "Core" },
   Active: { zh: "主动投资", en: "Active" },
   Trading: { zh: "交易", en: "Trading" },
@@ -761,6 +1003,16 @@ const enums: Record<string, { zh: string; en: string }> = {
   Reduce: { zh: "减仓", en: "Reduce" },
   Exit: { zh: "清仓", en: "Exit" },
   NoAction: { zh: "不行动", en: "No Action" },
+  Deposit: { zh: "入金", en: "Deposit" },
+  Withdrawal: { zh: "出金", en: "Withdrawal" },
+  Dividend: { zh: "分红", en: "Dividend" },
+  Interest: { zh: "利息", en: "Interest" },
+  Tax: { zh: "税费", en: "Tax" },
+  ManagementFee: { zh: "管理费", en: "Management Fee" },
+  MarginInterest: { zh: "融资利息", en: "Margin Interest" },
+  Split: { zh: "拆股", en: "Split" },
+  RightsIssue: { zh: "配股", en: "Rights Issue" },
+  FX: { zh: "换汇", en: "FX" },
   High: { zh: "高", en: "High" },
   Medium: { zh: "中", en: "Medium" },
   Low: { zh: "低", en: "Low" },
@@ -870,4 +1122,14 @@ export function translateEnum(value: unknown, language: Language): string {
   }
 
   return translatePair(enums[value], value, language);
+}
+
+export function translateBoolean(value: unknown, language: Language): string {
+  const normalized = value === true || value === 1 || value === "1" || value === "true";
+
+  if (language === "en-US") {
+    return normalized ? "Yes" : "No";
+  }
+
+  return normalized ? "是" : "否";
 }

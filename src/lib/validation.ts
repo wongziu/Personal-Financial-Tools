@@ -27,3 +27,13 @@ export const tradeDecisionInputSchema = z.object({
 });
 
 export type TradeDecisionInput = z.infer<typeof tradeDecisionInputSchema>;
+
+export const accountNavAnchorInputSchema = z.object({
+  accountId: z.string().min(1),
+  anchorDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  netAssetValueBase: z.coerce.number().nonnegative(),
+  source: z.string().min(1),
+  notes: z.string().optional().nullable()
+});
+
+export type AccountNavAnchorInput = z.infer<typeof accountNavAnchorInputSchema>;

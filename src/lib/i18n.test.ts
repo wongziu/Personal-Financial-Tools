@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { languageOptions, normalizeLanguage, translateColumn, translateColumnHelp, translateEnum, translateFieldHelp, translateText, translateUiHelp } from "@/lib/i18n";
+import { languageOptions, normalizeLanguage, translateBoolean, translateColumn, translateColumnHelp, translateEnum, translateFieldHelp, translateText, translateUiHelp } from "@/lib/i18n";
 
 describe("i18n system", () => {
   test("supports visible Simplified Chinese, Traditional Chinese, and English options", () => {
@@ -15,12 +15,36 @@ describe("i18n system", () => {
     expect(translateColumn("securities", "asset_type", "zh-CN")).toBe("资产类型");
     expect(translateColumn("securities", "asset_type", "zh-TW")).toBe("資產類型");
     expect(translateColumn("securities", "asset_type", "en-US")).toBe("Asset Type");
+    expect(translateColumn("accounts", "supported_markets", "zh-CN")).toBe("支持市场");
+    expect(translateColumn("accounts", "supported_markets", "en-US")).toBe("Supported Markets");
   });
 
   test("translates enum display values across all supported languages", () => {
     expect(translateEnum("Allowed", "zh-CN")).toBe("允许");
     expect(translateEnum("Allowed", "zh-TW")).toBe("允許");
     expect(translateEnum("Allowed", "en-US")).toBe("Allowed");
+  });
+
+  test("translates canonical stored account type values without leaking database codes", () => {
+    expect(translateEnum("cash", "zh-CN")).toBe("现金");
+    expect(translateEnum("fund", "zh-CN")).toBe("基金/理财");
+    expect(translateEnum("bank_cash", "zh-CN")).toBe("银行现金");
+    expect(translateEnum("cash", "en-US")).toBe("Cash");
+    expect(translateEnum("fund", "en-US")).toBe("Fund / Wealth Management");
+  });
+
+  test("translates canonical industry enum values", () => {
+    expect(translateEnum("InformationTechnology", "zh-CN")).toBe("信息技术");
+    expect(translateEnum("FixedIncome", "zh-CN")).toBe("固定收益");
+    expect(translateEnum("BankWealthManagement", "zh-CN")).toBe("银行理财");
+    expect(translateEnum("Semiconductors", "en-US")).toBe("Semiconductors");
+  });
+
+  test("translates database boolean values as localized labels", () => {
+    expect(translateBoolean(1, "zh-CN")).toBe("是");
+    expect(translateBoolean(0, "zh-CN")).toBe("否");
+    expect(translateBoolean(true, "zh-TW")).toBe("是");
+    expect(translateBoolean(false, "en-US")).toBe("No");
   });
 
   test("provides localized field help text", () => {

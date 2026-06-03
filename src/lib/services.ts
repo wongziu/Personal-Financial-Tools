@@ -1,5 +1,8 @@
 import type { DatabaseContext } from "@/lib/db/client";
 import type {
+  AccountDailyPerformanceRow,
+  AccountNavAnchorInput,
+  AccountReference,
   CashflowInput,
   Currency,
   FxRateInput,
@@ -8,15 +11,17 @@ import type {
   SecurityReference,
   TransactionInput
 } from "@/lib/domain";
+import { calculateAccountDailyPerformance } from "@/lib/account-performance";
 import { generateBusinessId } from "@/lib/ids";
 import { calculateCashBalances, calculateHoldings, calculatePortfolioSnapshot } from "@/lib/portfolio";
 import { evaluateTradeDecisionRisk } from "@/lib/risk";
-import { tradeDecisionInputSchema, type TradeDecisionInput } from "@/lib/validation";
+import { accountNavAnchorInputSchema, tradeDecisionInputSchema, type TradeDecisionInput } from "@/lib/validation";
 
 export type Row = Record<string, string | number | null>;
 
 export interface DashboardData {
   baseCurrency: Currency;
+  asOfDate: string;
   metrics: {
     portfolioNetValue: number;
     cashValueBase: number;
@@ -40,6 +45,41 @@ export interface TradeDecisionResult {
   risk: ReturnType<typeof evaluateTradeDecisionRisk>;
 }
 
+export interface AccountCalendarAccount extends AccountReference {
+  market: string;
+  currency: Currency;
+}
+
+export interface AccountCalendarData {
+  baseCurrency: Currency;
+  startDate: string;
+  endDate: string;
+  latestDate: string;
+  accounts: AccountCalendarAccount[];
+  rows: AccountDailyPerformanceRow[];
+  navAnchors: AccountNavAnchorInput[];
+}
+
+export interface PriceEntrySecurity {
+  id: string;
+  name: string;
+  ticker: string;
+  currency: Currency;
+  market: string;
+  accountId: string;
+  accountName: string;
+  investmentStatus: string;
+}
+
+export interface SecurityDetailData {
+  security: Row;
+  account: Row | null;
+  transactions: Row[];
+  prices: Row[];
+  cashflows: Row[];
+  theses: Row[];
+}
+
 function selectAll(database: DatabaseContext, table: string): Row[] {
   return database.sqlite.prepare(`SELECT * FROM ${table}`).all() as Row[];
 }
@@ -47,6 +87,11 @@ function selectAll(database: DatabaseContext, table: string): Row[] {
 function selectSetting(database: DatabaseContext, key: string, fallback: string): string {
   const row = database.sqlite.prepare("SELECT value FROM system_settings WHERE key = ?").get(key) as { value: string } | undefined;
   return row?.value ?? fallback;
+}
+
+function latestMarketDate(database: DatabaseContext): string {
+  const row = database.sqlite.prepare("SELECT MAX(price_date) AS latest_date FROM market_prices").get() as { latest_date: string | null } | undefined;
+  return row?.latest_date ?? new Date().toISOString().slice(0, 10);
 }
 
 function toBoolean(value: unknown): boolean {
@@ -67,6 +112,17 @@ function transactionRows(database: DatabaseContext): TransactionInput[] {
     totalFees: Number(row.commission) + Number(row.tax) + Number(row.other_fees),
     baseCurrencyAmount: Number(row.base_currency_amount),
     tradeDate: String(row.trade_date)
+  }));
+}
+
+function accountRows(database: DatabaseContext): AccountCalendarAccount[] {
+  return selectAll(database, "accounts").map((row) => ({
+    id: String(row.id),
+    institutionName: String(row.institution_name),
+    market: String(row.market),
+    currency: row.currency as Currency,
+    includeInNetWorth: toBoolean(row.include_in_net_worth),
+    initialEntryDate: String(row.initial_entry_date)
   }));
 }
 
@@ -111,6 +167,61 @@ function securityReferences(database: DatabaseContext): SecurityReference[] {
   }));
 }
 
+export function getPriceEntrySecurities(database: DatabaseContext): PriceEntrySecurity[] {
+  return database.sqlite
+    .prepare(
+      `
+        SELECT
+          securities.id,
+          securities.name,
+          securities.ticker,
+          securities.currency,
+          securities.market,
+          securities.account_id AS accountId,
+          accounts.institution_name AS accountName,
+          securities.investment_status AS investmentStatus
+        FROM securities
+        INNER JOIN accounts ON accounts.id = securities.account_id
+        WHERE accounts.include_in_net_worth = 1
+          AND securities.investment_status IN ('Allowed', 'Watch')
+          AND securities.asset_type <> 'Cash'
+        ORDER BY securities.market, securities.name
+      `
+    )
+    .all() as PriceEntrySecurity[];
+}
+
+export function getSecurityDetailData(database: DatabaseContext, securityId: string): SecurityDetailData | null {
+  const security = database.sqlite.prepare("SELECT * FROM securities WHERE id = ?").get(securityId) as Row | undefined;
+  if (!security) {
+    return null;
+  }
+
+  const account = security.account_id
+    ? database.sqlite.prepare("SELECT * FROM accounts WHERE id = ?").get(String(security.account_id)) as Row | undefined
+    : undefined;
+
+  return {
+    security,
+    account: account ?? null,
+    transactions: database.sqlite.prepare("SELECT * FROM transactions WHERE security_id = ? ORDER BY trade_date DESC, rowid DESC").all(securityId) as Row[],
+    prices: database.sqlite.prepare("SELECT * FROM market_prices WHERE security_id = ? ORDER BY price_date DESC, rowid DESC").all(securityId) as Row[],
+    cashflows: database.sqlite.prepare("SELECT * FROM cashflows WHERE security_id = ? ORDER BY cashflow_date DESC, rowid DESC").all(securityId) as Row[],
+    theses: database.sqlite.prepare("SELECT * FROM theses WHERE security_id = ? ORDER BY established_date DESC, rowid DESC").all(securityId) as Row[]
+  };
+}
+
+function accountNavAnchorRows(database: DatabaseContext): AccountNavAnchorInput[] {
+  return selectAll(database, "account_nav_anchors").map((row) => ({
+    id: Number(row.id),
+    accountId: String(row.account_id),
+    anchorDate: String(row.anchor_date),
+    netAssetValueBase: Number(row.net_asset_value_base),
+    source: String(row.source),
+    notes: row.notes === null ? null : String(row.notes)
+  }));
+}
+
 function riskRuleRows(database: DatabaseContext): RiskRuleInput[] {
   return selectAll(database, "risk_rules")
     .filter((row) => toBoolean(row.enabled))
@@ -119,6 +230,30 @@ function riskRuleRows(database: DatabaseContext): RiskRuleInput[] {
       threshold: Number(row.threshold),
       severity: row.severity as RiskRuleInput["severity"]
     }));
+}
+
+function validateTradeDecisionReferences(database: DatabaseContext, input: TradeDecisionInput): void {
+  const security = database.sqlite.prepare("SELECT id FROM securities WHERE id = ?").get(input.securityId);
+  if (!security) {
+    throw new Error(`Invalid security reference: ${input.securityId}`);
+  }
+
+  if (input.thesisId) {
+    const thesis = database.sqlite.prepare("SELECT id, security_id FROM theses WHERE id = ?").get(input.thesisId) as Row | undefined;
+    if (!thesis) {
+      throw new Error(`Invalid thesis reference: ${input.thesisId}`);
+    }
+    if (String(thesis.security_id) !== input.securityId) {
+      throw new Error(`Thesis ${input.thesisId} does not belong to security ${input.securityId}`);
+    }
+  }
+
+  for (const sourceId of input.sourceIds) {
+    const source = database.sqlite.prepare("SELECT id FROM information_sources WHERE id = ?").get(sourceId);
+    if (!source) {
+      throw new Error(`Invalid source reference: ${sourceId}`);
+    }
+  }
 }
 
 export function nextBusinessId(database: DatabaseContext, prefix: string, date = new Date()): string {
@@ -140,6 +275,7 @@ export function nextBusinessId(database: DatabaseContext, prefix: string, date =
 export function listAllExportData(database: DatabaseContext) {
   return {
     accounts: selectAll(database, "accounts"),
+    accountNavAnchors: selectAll(database, "account_nav_anchors"),
     securities: selectAll(database, "securities"),
     transactions: selectAll(database, "transactions"),
     cashflows: selectAll(database, "cashflows"),
@@ -154,14 +290,81 @@ export function listAllExportData(database: DatabaseContext) {
   };
 }
 
+export function getAccountCalendarData(database: DatabaseContext): AccountCalendarData {
+  const baseCurrency = selectSetting(database, "baseCurrency", "CNY") as Currency;
+  const accounts = accountRows(database);
+  const rows = calculateAccountDailyPerformance({
+    accounts,
+    transactions: transactionRows(database),
+    cashflows: cashflowRows(database),
+    prices: priceRows(database),
+    fxRates: fxRows(database),
+    securities: securityReferences(database),
+    navAnchors: accountNavAnchorRows(database),
+    baseCurrency
+  });
+  const dates = rows.map((row) => row.snapshotDate).sort();
+
+  return {
+    baseCurrency,
+    startDate: dates[0] ?? new Date().toISOString().slice(0, 10),
+    endDate: dates.at(-1) ?? new Date().toISOString().slice(0, 10),
+    latestDate: dates.at(-1) ?? new Date().toISOString().slice(0, 10),
+    accounts,
+    rows,
+    navAnchors: accountNavAnchorRows(database)
+  };
+}
+
+export function upsertAccountNavAnchor(database: DatabaseContext, rawInput: unknown): AccountNavAnchorInput {
+  const input = accountNavAnchorInputSchema.parse(rawInput);
+  const account = database.sqlite.prepare("SELECT id FROM accounts WHERE id = ?").get(input.accountId);
+  if (!account) {
+    throw new Error(`Unknown account ${input.accountId}`);
+  }
+
+  database.sqlite
+    .prepare(
+      `
+        INSERT INTO account_nav_anchors (account_id, anchor_date, net_asset_value_base, source, notes)
+        VALUES (@accountId, @anchorDate, @netAssetValueBase, @source, @notes)
+        ON CONFLICT(account_id, anchor_date) DO UPDATE SET
+          net_asset_value_base = excluded.net_asset_value_base,
+          source = excluded.source,
+          notes = excluded.notes
+      `
+    )
+    .run({
+      accountId: input.accountId,
+      anchorDate: input.anchorDate,
+      netAssetValueBase: input.netAssetValueBase,
+      source: input.source,
+      notes: input.notes ?? null
+    });
+
+  const row = database.sqlite
+    .prepare("SELECT * FROM account_nav_anchors WHERE account_id = ? AND anchor_date = ?")
+    .get(input.accountId, input.anchorDate) as Row;
+
+  return {
+    id: Number(row.id),
+    accountId: String(row.account_id),
+    anchorDate: String(row.anchor_date),
+    netAssetValueBase: Number(row.net_asset_value_base),
+    source: String(row.source),
+    notes: row.notes === null ? null : String(row.notes)
+  };
+}
+
 export function getDashboardData(database: DatabaseContext): DashboardData {
   const baseCurrency = selectSetting(database, "baseCurrency", "CNY") as Currency;
+  const asOfDate = latestMarketDate(database);
   const securities = selectAll(database, "securities");
   const securityNameById = new Map(securities.map((security) => [String(security.id), String(security.name)]));
   const holdings = calculateHoldings(transactionRows(database));
   const cashBalances = calculateCashBalances(cashflowRows(database), transactionRows(database), baseCurrency);
   const snapshot = calculatePortfolioSnapshot({
-    asOfDate: "2026-06-02",
+    asOfDate,
     holdings,
     cashBalances,
     prices: priceRows(database),
@@ -182,6 +385,7 @@ export function getDashboardData(database: DatabaseContext): DashboardData {
 
   return {
     baseCurrency,
+    asOfDate,
     metrics: {
       portfolioNetValue: snapshot.portfolioNetValue,
       cashValueBase: snapshot.cashValueBase,
@@ -211,6 +415,7 @@ export function getDashboardData(database: DatabaseContext): DashboardData {
 
 export function createTradeDecisionWithRisk(database: DatabaseContext, rawInput: TradeDecisionInput): TradeDecisionResult {
   const input = tradeDecisionInputSchema.parse(rawInput);
+  validateTradeDecisionReferences(database, input);
   const now = new Date();
   const decisionId = nextBusinessId(database, "DEC", now);
   const risk = evaluateTradeDecisionRisk({

@@ -28,6 +28,19 @@ export function getDateFields(definition: ModuleDefinition): ModuleField[] {
   return definition.fields.filter((field) => field.type === "date");
 }
 
+export function getCalendarDateFields(definition: ModuleDefinition): ModuleField[] {
+  if (definition.calendar?.enabled === false) {
+    return [];
+  }
+
+  return getDateFields(definition);
+}
+
+export function getDefaultCalendarColumn(definition: ModuleDefinition): string | undefined {
+  const fields = getCalendarDateFields(definition);
+  return fields.find((field) => field.column === definition.calendar?.defaultColumn)?.column ?? fields[0]?.column;
+}
+
 export function formatDateKey(value: unknown): string | null {
   if (value === null || value === undefined || value === "") {
     return null;

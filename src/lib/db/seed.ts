@@ -3,6 +3,7 @@ import type { DatabaseContext } from "@/lib/db/client";
 const naturalKeys: Record<string, string[]> = {
   market_prices: ["price_date", "security_id"],
   fx_rates: ["rate_date", "from_currency", "to_currency"],
+  account_nav_anchors: ["account_id", "anchor_date"],
   thesis_evidence: ["thesis_id", "source_id", "evidence_side"],
   trade_decision_sources: ["decision_id", "source_id"]
 };
@@ -60,8 +61,9 @@ export function seedDemoData(database: DatabaseContext): void {
     {
       id: "ACC-CN-001",
       institution_name: "Demo CN Broker",
-      account_type: "Cash",
+      account_type: "cash",
       market: "A-Share",
+      supported_markets: JSON.stringify(["A-Share", "HK", "MutualFund"]),
       currency: "CNY",
       allow_margin_or_derivatives: 0,
       include_in_net_worth: 1,
@@ -72,8 +74,9 @@ export function seedDemoData(database: DatabaseContext): void {
     {
       id: "ACC-US-001",
       institution_name: "Demo US Broker",
-      account_type: "Cash",
+      account_type: "cash",
       market: "US",
+      supported_markets: JSON.stringify(["US", "HK"]),
       currency: "USD",
       allow_margin_or_derivatives: 0,
       include_in_net_worth: 1,
@@ -86,13 +89,14 @@ export function seedDemoData(database: DatabaseContext): void {
   insertMany(database, "securities", [
     {
       id: "CN-510300",
+      account_id: "ACC-CN-001",
       name: "沪深300ETF",
       ticker: "510300",
       asset_type: "ETF",
       market: "A-Share",
       currency: "CNY",
-      industry_level_1: "Broad Market",
-      industry_level_2: "Index",
+      industry_level_1: "BroadMarket",
+      industry_level_2: "IndexETF",
       risk_theme_tags: JSON.stringify(["China Equity"]),
       liquidity_level: "High",
       investment_status: "Allowed",
@@ -102,13 +106,14 @@ export function seedDemoData(database: DatabaseContext): void {
     },
     {
       id: "US-AAPL",
+      account_id: "ACC-US-001",
       name: "Apple Inc.",
       ticker: "AAPL",
       asset_type: "Stock",
       market: "US",
       currency: "USD",
-      industry_level_1: "Technology",
-      industry_level_2: "Consumer Electronics",
+      industry_level_1: "InformationTechnology",
+      industry_level_2: "Hardware",
       risk_theme_tags: JSON.stringify(["AI Capex", "USD", "US Growth Valuation"]),
       liquidity_level: "High",
       investment_status: "Allowed",
@@ -148,6 +153,23 @@ export function seedDemoData(database: DatabaseContext): void {
       is_investment_income: 0,
       data_source: "Demo broker record",
       notes: "Initial USD capital"
+    }
+  ]);
+
+  insertMany(database, "account_nav_anchors", [
+    {
+      account_id: "ACC-CN-001",
+      anchor_date: "2026-01-01",
+      net_asset_value_base: 200000,
+      source: "Demo opening statement",
+      notes: "Initial account NAV baseline"
+    },
+    {
+      account_id: "ACC-US-001",
+      anchor_date: "2026-01-01",
+      net_asset_value_base: 144000,
+      source: "Demo opening statement",
+      notes: "Initial USD account NAV converted to CNY"
     }
   ]);
 

@@ -24,6 +24,7 @@ export const accounts = sqliteTable("accounts", {
   institutionName: text("institution_name").notNull(),
   accountType: text("account_type").notNull(),
   market: text("market").notNull(),
+  supportedMarkets: text("supported_markets").notNull().default("[]"),
   currency: text("currency").notNull(),
   allowMarginOrDerivatives: integer("allow_margin_or_derivatives").notNull().default(0),
   includeInNetWorth: integer("include_in_net_worth").notNull().default(1),
@@ -34,6 +35,7 @@ export const accounts = sqliteTable("accounts", {
 
 export const securities = sqliteTable("securities", {
   id: text("id").primaryKey(),
+  accountId: text("account_id"),
   name: text("name").notNull(),
   ticker: text("ticker").notNull(),
   assetType: text("asset_type").notNull(),
@@ -42,6 +44,7 @@ export const securities = sqliteTable("securities", {
   industryLevel1: text("industry_level_1"),
   industryLevel2: text("industry_level_2"),
   riskThemeTags: text("risk_theme_tags").notNull().default("[]"),
+  lockupDays: integer("lockup_days"),
   liquidityLevel: text("liquidity_level").notNull(),
   investmentStatus: text("investment_status").notNull(),
   benchmark: text("benchmark").notNull(),
@@ -250,6 +253,16 @@ export const portfolioSnapshots = sqliteTable("portfolio_snapshots", {
   riskWarnings: text("risk_warnings").notNull().default("[]")
 });
 
+export const accountNavAnchors = sqliteTable("account_nav_anchors", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  accountId: text("account_id").notNull(),
+  anchorDate: text("anchor_date").notNull(),
+  netAssetValueBase: real("net_asset_value_base").notNull(),
+  source: text("source").notNull(),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP")
+});
+
 export const schema = {
   systemSettings,
   riskRules,
@@ -268,5 +281,6 @@ export const schema = {
   tradeDecisionSources,
   exceptions,
   holdingSnapshots,
-  portfolioSnapshots
+  portfolioSnapshots,
+  accountNavAnchors
 };

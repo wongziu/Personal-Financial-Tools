@@ -2,6 +2,7 @@
 
 import { CircleHelpIcon } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -27,10 +28,25 @@ export function HelpTooltip({ content, label }: { content: string; label: string
   );
 }
 
-export function FieldLabel({ htmlFor, label, help }: { htmlFor?: string; label: string; help: string }) {
+function requirementLabel(required: boolean | undefined, language: string): string {
+  if (language === "en-US") {
+    return required ? "Required" : "Optional";
+  }
+  if (language === "zh-TW") {
+    return required ? "必填" : "選填";
+  }
+  return required ? "必填" : "选填";
+}
+
+export function FieldLabel({ htmlFor, label, help, required }: { htmlFor?: string; label: string; help: string; required?: boolean }) {
+  const { language } = useLanguage();
+
   return (
     <div className="flex items-center gap-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
+      <Badge variant={required ? "default" : "outline"} className="h-5 px-1.5 text-[10px] font-medium">
+        {requirementLabel(required, language)}
+      </Badge>
       <HelpTooltip content={help} label={label} />
     </div>
   );

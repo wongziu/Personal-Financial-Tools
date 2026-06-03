@@ -6,6 +6,7 @@ import {
   calculateHoldings,
   calculatePortfolioSnapshot
 } from "@/lib/portfolio";
+import { calculateAccountDailyPerformance } from "@/lib/account-performance";
 import { evaluateTradeDecisionRisk } from "@/lib/risk";
 
 describe("business id generation", () => {
@@ -159,6 +160,183 @@ describe("portfolio calculation", () => {
     expect(snapshot.positions[0].weight).toBeCloseTo(0.916666, 5);
     expect(snapshot.riskThemeWeights.get("AI Capex")).toBeCloseTo(0.916666, 5);
   });
+
+  test("uses the latest available price and fx rate on or before the snapshot date", () => {
+    const snapshot = calculatePortfolioSnapshot({
+      asOfDate: "2026-01-05",
+      holdings: [
+        {
+          accountId: "ACC-US-001",
+          securityId: "US-AAPL",
+          strategyType: "Active",
+          quantity: 10,
+          totalCost: 7200,
+          averageCost: 720,
+          realizedProfit: 0
+        }
+      ],
+      cashBalances: new Map([["ACC-US-001:USD", 0]]),
+      prices: [
+        { securityId: "US-AAPL", priceDate: "2026-01-01", closePrice: 100, currency: "USD" },
+        { securityId: "US-AAPL", priceDate: "2026-01-05", closePrice: 110, currency: "USD" },
+        { securityId: "US-AAPL", priceDate: "2026-01-08", closePrice: 130, currency: "USD" }
+      ],
+      fxRates: [
+        { rateDate: "2026-01-01", fromCurrency: "USD", toCurrency: "CNY", rate: 7.1 },
+        { rateDate: "2026-01-05", fromCurrency: "USD", toCurrency: "CNY", rate: 7.2 },
+        { rateDate: "2026-01-08", fromCurrency: "USD", toCurrency: "CNY", rate: 7.5 }
+      ],
+      securities: [{ id: "US-AAPL", riskThemeTags: ["AI Capex"], industryLevel1: "Technology" }]
+    });
+
+    expect(snapshot.positions[0].marketPrice).toBe(110);
+    expect(snapshot.positions[0].marketValueBase).toBe(7920);
+  });
+
+  test("recomputes account daily nav and pnl from ledger changes and same-day nav anchors", () => {
+    const commonInput = {
+      accounts: [
+        {
+          id: "ACC-CN-001",
+          institutionName: "Demo Broker",
+          includeInNetWorth: true,
+          initialEntryDate: "2026-01-01"
+        }
+      ],
+      securities: [{ id: "CN-510300", riskThemeTags: ["China Equity"], industryLevel1: "Broad Market" }],
+      cashflows: [
+        {
+          id: "CFL-2026-001",
+          accountId: "ACC-CN-001",
+          cashflowType: "Deposit" as const,
+          currency: "CNY" as const,
+          amount: 1000,
+          baseCurrencyAmount: 1000,
+          isExternal: true,
+          isInvestmentIncome: false,
+          cashflowDate: "2026-01-01"
+        }
+      ],
+      prices: [
+        { securityId: "CN-510300", priceDate: "2026-01-02", closePrice: 10, currency: "CNY" as const },
+        { securityId: "CN-510300", priceDate: "2026-01-03", closePrice: 12, currency: "CNY" as const }
+      ],
+      fxRates: [],
+      startDate: "2026-01-01",
+      endDate: "2026-01-03"
+    };
+
+    const rows = calculateAccountDailyPerformance({
+      ...commonInput,
+      transactions: [
+        {
+          id: "TRD-2026-001",
+          accountId: "ACC-CN-001",
+          securityId: "CN-510300",
+          strategyType: "Core",
+          transactionType: "Buy",
+          status: "Settled",
+          quantity: 10,
+          unitPrice: 10,
+          grossAmount: 100,
+          totalFees: 0,
+          baseCurrencyAmount: 100,
+          tradeDate: "2026-01-02"
+        }
+      ],
+      navAnchors: []
+    });
+
+    expect(rows.map((row) => [row.snapshotDate, row.netAssetValueBase, row.dailyPnlBase])).toEqual([
+      ["2026-01-01", 1000, 0],
+      ["2026-01-02", 1000, 0],
+      ["2026-01-03", 1020, 20]
+    ]);
+
+    const correctedRows = calculateAccountDailyPerformance({
+      ...commonInput,
+      transactions: [
+        {
+          id: "TRD-2026-001-CORR",
+          accountId: "ACC-CN-001",
+          securityId: "CN-510300",
+          strategyType: "Core",
+          transactionType: "Buy",
+          status: "Settled",
+          quantity: 10,
+          unitPrice: 10,
+          grossAmount: 100,
+          totalFees: 10,
+          baseCurrencyAmount: 110,
+          tradeDate: "2026-01-02"
+        }
+      ],
+      navAnchors: []
+    });
+
+    expect(correctedRows[1]?.netAssetValueBase).toBe(990);
+    expect(correctedRows[1]?.dailyPnlBase).toBe(-10);
+    expect(correctedRows.at(-1)?.netAssetValueBase).toBe(1010);
+    expect(correctedRows.at(-1)?.dailyPnlBase).toBe(20);
+
+    const anchoredRows = calculateAccountDailyPerformance({
+      ...commonInput,
+      transactions: [
+        {
+          id: "TRD-2026-001",
+          accountId: "ACC-CN-001",
+          securityId: "CN-510300",
+          strategyType: "Core",
+          transactionType: "Buy",
+          status: "Settled",
+          quantity: 10,
+          unitPrice: 10,
+          grossAmount: 100,
+          totalFees: 0,
+          baseCurrencyAmount: 100,
+          tradeDate: "2026-01-02"
+        }
+      ],
+      navAnchors: [
+        {
+          id: 1,
+          accountId: "ACC-CN-001",
+          anchorDate: "2026-01-03",
+          netAssetValueBase: 1015,
+          source: "Manual reconciliation",
+          notes: "Broker statement"
+        }
+      ]
+    });
+
+    expect(anchoredRows.at(-1)?.netAssetValueBase).toBe(1015);
+    expect(anchoredRows.at(-1)?.dailyPnlBase).toBe(15);
+    expect(anchoredRows.at(-1)?.isAnchored).toBe(true);
+
+    const openingAnchorRows = calculateAccountDailyPerformance({
+      accounts: commonInput.accounts,
+      transactions: [],
+      cashflows: [],
+      prices: [],
+      fxRates: [],
+      securities: commonInput.securities,
+      navAnchors: [
+        {
+          id: 2,
+          accountId: "ACC-CN-001",
+          anchorDate: "2026-01-01",
+          netAssetValueBase: 1000,
+          source: "Opening statement",
+          notes: null
+        }
+      ],
+      startDate: "2026-01-01",
+      endDate: "2026-01-01"
+    });
+
+    expect(openingAnchorRows[0]?.netAssetValueBase).toBe(1000);
+    expect(openingAnchorRows[0]?.dailyPnlBase).toBe(0);
+  });
 });
 
 describe("risk evaluation", () => {
@@ -192,6 +370,7 @@ describe("excel export", () => {
   test("creates a workbook with a worksheet per v1 module", async () => {
     const workbook = await buildExportWorkbook({
       accounts: [{ id: "ACC-CN-001", institutionName: "Demo Broker" }],
+      accountNavAnchors: [{ account_id: "ACC-CN-001", anchor_date: "2026-01-01", net_asset_value_base: 100000 }],
       securities: [{ id: "CN-510300", name: "沪深300ETF" }],
       transactions: [{ id: "TRD-2026-001", status: "Settled" }],
       cashflows: [{ id: "CFL-2026-001", cashflowType: "Deposit" }],
@@ -207,6 +386,7 @@ describe("excel export", () => {
 
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
       "Accounts",
+      "Account NAV Anchors",
       "Securities",
       "Transactions",
       "Cashflows",

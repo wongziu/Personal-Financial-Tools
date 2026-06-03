@@ -4,6 +4,7 @@ type ExportRows = Record<string, unknown>[];
 
 export interface ExportWorkbookInput {
   accounts: ExportRows;
+  accountNavAnchors: ExportRows;
   securities: ExportRows;
   transactions: ExportRows;
   cashflows: ExportRows;
@@ -19,6 +20,7 @@ export interface ExportWorkbookInput {
 
 const sheetDefinitions: Array<[keyof ExportWorkbookInput, string]> = [
   ["accounts", "Accounts"],
+  ["accountNavAnchors", "Account NAV Anchors"],
   ["securities", "Securities"],
   ["transactions", "Transactions"],
   ["cashflows", "Cashflows"],

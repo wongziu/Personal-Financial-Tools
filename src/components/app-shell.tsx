@@ -4,6 +4,7 @@ import {
   AlertTriangleIcon,
   BanknoteIcon,
   BarChart3Icon,
+  CalendarDaysIcon,
   BookOpenIcon,
   CalendarClockIcon,
   DatabaseIcon,
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", labelZh: "仪表盘", labelEn: "Dashboard", icon: GaugeIcon },
   { href: "/accounts", labelZh: "账户", labelEn: "Accounts", icon: LandmarkIcon },
+  { href: "/account-calendar", labelZh: "账户日历", labelEn: "Account Calendar", icon: CalendarDaysIcon },
   { href: "/securities", labelZh: "标的", labelEn: "Securities", icon: DatabaseIcon },
   { href: "/transactions", labelZh: "交易流水", labelEn: "Transactions", icon: ReceiptTextIcon },
   { href: "/cashflows", labelZh: "现金流/公司行为", labelEn: "Cashflows", icon: BanknoteIcon },
@@ -89,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <GlobeIcon className="size-4 text-muted-foreground" />
               <Select value={language} onValueChange={(value) => setLanguage(value as Language)}>
                 <SelectTrigger aria-label={t.language} className="h-9 w-[128px]">
-                  <SelectValue />
+                  <SelectValue>{languageOptions.find((option) => option.value === language)?.label ?? language}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {languageOptions.map((option) => (

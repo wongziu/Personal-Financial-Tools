@@ -62,6 +62,7 @@ export function initializeDatabase(sqlite: Database.Database): void {
       institution_name TEXT NOT NULL,
       account_type TEXT NOT NULL,
       market TEXT NOT NULL,
+      supported_markets TEXT NOT NULL DEFAULT '[]',
       currency TEXT NOT NULL,
       allow_margin_or_derivatives INTEGER NOT NULL DEFAULT 0,
       include_in_net_worth INTEGER NOT NULL DEFAULT 1,
@@ -71,6 +72,7 @@ export function initializeDatabase(sqlite: Database.Database): void {
     );
     CREATE TABLE IF NOT EXISTS securities (
       id TEXT PRIMARY KEY,
+      account_id TEXT,
       name TEXT NOT NULL,
       ticker TEXT NOT NULL,
       asset_type TEXT NOT NULL,
@@ -79,6 +81,7 @@ export function initializeDatabase(sqlite: Database.Database): void {
       industry_level_1 TEXT,
       industry_level_2 TEXT,
       risk_theme_tags TEXT NOT NULL DEFAULT '[]',
+      lockup_days INTEGER,
       liquidity_level TEXT NOT NULL,
       investment_status TEXT NOT NULL,
       benchmark TEXT NOT NULL,
@@ -273,5 +276,76 @@ export function initializeDatabase(sqlite: Database.Database): void {
       max_drawdown REAL NOT NULL DEFAULT 0,
       risk_warnings TEXT NOT NULL DEFAULT '[]'
     );
+    CREATE TABLE IF NOT EXISTS account_nav_anchors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL,
+      anchor_date TEXT NOT NULL,
+      net_asset_value_base REAL NOT NULL,
+      source TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(account_id, anchor_date)
+    );
+  `);
+
+  const accountColumns = sqlite.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>;
+  if (!accountColumns.some((column) => column.name === "supported_markets")) {
+    sqlite.exec("ALTER TABLE accounts ADD COLUMN supported_markets TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  const securityColumns = sqlite.prepare("PRAGMA table_info(securities)").all() as Array<{ name: string }>;
+  if (!securityColumns.some((column) => column.name === "account_id")) {
+    sqlite.exec("ALTER TABLE securities ADD COLUMN account_id TEXT");
+  }
+  if (!securityColumns.some((column) => column.name === "lockup_days")) {
+    sqlite.exec("ALTER TABLE securities ADD COLUMN lockup_days INTEGER");
+  }
+
+  sqlite.exec(`
+    UPDATE accounts
+    SET supported_markets = '["' || market || '"]'
+    WHERE supported_markets IS NULL OR supported_markets = '' OR supported_markets = '[]';
+
+    UPDATE securities
+    SET account_id = COALESCE(
+      account_id,
+      (SELECT accounts.id FROM accounts WHERE accounts.market = securities.market ORDER BY rowid LIMIT 1),
+      (SELECT accounts.id FROM accounts ORDER BY rowid LIMIT 1)
+    )
+    WHERE account_id IS NULL;
+
+    UPDATE securities
+    SET industry_level_1 = CASE industry_level_1
+      WHEN 'Broad Market' THEN 'BroadMarket'
+      WHEN 'Technology' THEN 'InformationTechnology'
+      WHEN '固定收益' THEN 'FixedIncome'
+      WHEN '待补充' THEN 'Unclassified'
+      ELSE industry_level_1
+    END;
+
+    UPDATE securities
+    SET industry_level_2 = CASE industry_level_2
+      WHEN 'Index' THEN 'IndexETF'
+      WHEN 'Consumer Electronics' THEN 'Hardware'
+      WHEN '银行理财' THEN 'BankWealthManagement'
+      ELSE industry_level_2
+    END;
+
+    UPDATE securities
+    SET lockup_days = CASE
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND (name LIKE '%368%' OR ticker LIKE '%368%') THEN 368
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND lockup_days IS NULL AND liquidity_level = 'Low' THEN 365
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND lockup_days IS NULL AND liquidity_level = 'Medium' THEN 90
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND lockup_days IS NULL THEN 0
+      WHEN asset_type NOT IN ('ActiveFund', 'Bond') THEN NULL
+      ELSE lockup_days
+    END;
+
+    UPDATE securities
+    SET liquidity_level = CASE
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND COALESCE(lockup_days, 0) > 180 THEN 'Low'
+      WHEN asset_type IN ('ActiveFund', 'Bond') AND COALESCE(lockup_days, 0) > 7 THEN 'Medium'
+      ELSE 'High'
+    END;
   `);
 }

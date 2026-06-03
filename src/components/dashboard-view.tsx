@@ -21,6 +21,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
   const { language, t } = useLanguage();
   const metricCards = [
     { label: t.portfolioNetValue, value: money(data.metrics.portfolioNetValue, data.baseCurrency), helpKey: "dashboard.portfolioNetValue" },
+    { label: t.asOfDate, value: data.asOfDate, helpKey: "dashboard.asOfDate" },
     { label: t.cashValue, value: money(data.metrics.cashValueBase, data.baseCurrency), helpKey: "dashboard.cashValue" },
     { label: t.largestHolding, value: `${data.metrics.largestHoldingName} · ${percent(data.metrics.largestHoldingWeight)}`, helpKey: "dashboard.largestHolding" },
     { label: t.maxTheme, value: `${data.metrics.maxThemeName} · ${percent(data.metrics.maxThemeWeight)}`, helpKey: "dashboard.maxTheme" }
@@ -35,7 +36,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </h1>
         <p className="text-sm text-muted-foreground">{t.holdingsAndNavDescription}</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {metricCards.map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="pb-2">

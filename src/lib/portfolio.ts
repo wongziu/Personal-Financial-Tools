@@ -116,17 +116,31 @@ export function calculateCashBalances(
   return balances;
 }
 
-function getFxRate(fxRates: FxRateInput[], fromCurrency: Currency, toCurrency: Currency): number {
+function latestByDate<T>(items: T[], dateOf: (item: T) => string, asOfDate: string): T | undefined {
+  return items
+    .filter((item) => dateOf(item) <= asOfDate)
+    .sort((a, b) => dateOf(b).localeCompare(dateOf(a)))[0];
+}
+
+function getFxRate(fxRates: FxRateInput[], fromCurrency: Currency, toCurrency: Currency, asOfDate: string): number {
   if (fromCurrency === toCurrency) {
     return 1;
   }
 
-  const exact = fxRates.find((rate) => rate.fromCurrency === fromCurrency && rate.toCurrency === toCurrency);
+  const exact = latestByDate(
+    fxRates.filter((rate) => rate.fromCurrency === fromCurrency && rate.toCurrency === toCurrency),
+    (rate) => rate.rateDate,
+    asOfDate
+  );
   if (exact) {
     return exact.rate;
   }
 
-  const inverse = fxRates.find((rate) => rate.fromCurrency === toCurrency && rate.toCurrency === fromCurrency);
+  const inverse = latestByDate(
+    fxRates.filter((rate) => rate.fromCurrency === toCurrency && rate.toCurrency === fromCurrency),
+    (rate) => rate.rateDate,
+    asOfDate
+  );
   if (inverse) {
     return 1 / inverse.rate;
   }
@@ -146,12 +160,16 @@ export function calculatePortfolioSnapshot(input: {
   const baseCurrency = input.baseCurrency ?? "CNY";
   const securityMap = new Map(input.securities.map((security) => [security.id, security]));
   const positions = input.holdings.map((holding) => {
-    const price = input.prices.find((item) => item.securityId === holding.securityId);
+    const price = latestByDate(
+      input.prices.filter((item) => item.securityId === holding.securityId),
+      (item) => item.priceDate,
+      input.asOfDate
+    );
     if (!price) {
       throw new Error(`Missing market price for ${holding.securityId}`);
     }
 
-    const fxRate = getFxRate(input.fxRates, price.currency, baseCurrency);
+    const fxRate = getFxRate(input.fxRates, price.currency, baseCurrency, input.asOfDate);
     const marketValueOriginal = holding.quantity * price.closePrice;
     const marketValueBase = marketValueOriginal * fxRate;
 
@@ -167,7 +185,7 @@ export function calculatePortfolioSnapshot(input: {
 
   const cashValueBase = [...input.cashBalances.entries()].reduce((sum, [key, amount]) => {
     const [, currency] = key.split(":") as [string, Currency];
-    return sum + amount * getFxRate(input.fxRates, currency, baseCurrency);
+    return sum + amount * getFxRate(input.fxRates, currency, baseCurrency, input.asOfDate);
   }, 0);
   const portfolioNetValue = positions.reduce((sum, position) => sum + position.marketValueBase, 0) + cashValueBase;
   const riskThemeWeights = new Map<string, number>();
