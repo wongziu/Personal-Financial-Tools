@@ -60,7 +60,8 @@ export function seedDemoData(database: DatabaseContext): void {
   insertMany(database, "accounts", [
     {
       id: "ACC-CN-001",
-      institution_name: "Demo CN Broker",
+      institution_name: "Demo Brokerage Group",
+      account_name: "Demo CN Broker",
       account_type: "cash",
       market: "A-Share",
       supported_markets: JSON.stringify(["A-Share", "HK", "MutualFund"]),
@@ -73,7 +74,8 @@ export function seedDemoData(database: DatabaseContext): void {
     },
     {
       id: "ACC-US-001",
-      institution_name: "Demo US Broker",
+      institution_name: "Demo Brokerage Group",
+      account_name: "Demo US Broker",
       account_type: "cash",
       market: "US",
       supported_markets: JSON.stringify(["US", "HK"]),

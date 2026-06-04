@@ -60,6 +60,7 @@ export function initializeDatabase(sqlite: Database.Database): void {
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
       institution_name TEXT NOT NULL,
+      account_name TEXT NOT NULL DEFAULT '',
       account_type TEXT NOT NULL,
       market TEXT NOT NULL,
       supported_markets TEXT NOT NULL DEFAULT '[]',
@@ -289,6 +290,9 @@ export function initializeDatabase(sqlite: Database.Database): void {
   `);
 
   const accountColumns = sqlite.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>;
+  if (!accountColumns.some((column) => column.name === "account_name")) {
+    sqlite.exec("ALTER TABLE accounts ADD COLUMN account_name TEXT NOT NULL DEFAULT ''");
+  }
   if (!accountColumns.some((column) => column.name === "supported_markets")) {
     sqlite.exec("ALTER TABLE accounts ADD COLUMN supported_markets TEXT NOT NULL DEFAULT '[]'");
   }
@@ -302,6 +306,30 @@ export function initializeDatabase(sqlite: Database.Database): void {
   }
 
   sqlite.exec(`
+    UPDATE accounts
+    SET account_name = CASE id
+      WHEN 'ACC-HSBC-HK-001' THEN '汇丰全速易 HKD'
+      WHEN 'ACC-HSBC-US-001' THEN '汇丰全速易 USD'
+      WHEN 'ACC-CITIC-CN-001' THEN '中信证券 A股'
+      WHEN 'ACC-FOSUN-HK-001' THEN '复星证券 HKD'
+      WHEN 'ACC-CMB-WM-001' THEN '招商银行理财 CNY'
+      WHEN 'ACC-BOC-WM-001' THEN '中国银行理财 CNY'
+      ELSE institution_name || ' ' || currency
+    END
+    WHERE account_name IS NULL
+      OR account_name = ''
+      OR (
+        account_name = institution_name
+        AND id IN (
+          'ACC-HSBC-HK-001',
+          'ACC-HSBC-US-001',
+          'ACC-CITIC-CN-001',
+          'ACC-FOSUN-HK-001',
+          'ACC-CMB-WM-001',
+          'ACC-BOC-WM-001'
+        )
+      );
+
     UPDATE accounts
     SET supported_markets = '["' || market || '"]'
     WHERE supported_markets IS NULL OR supported_markets = '' OR supported_markets = '[]';

@@ -82,6 +82,18 @@ function signedBaseCashflowAmount(cashflow: CashflowInput): number {
   }
 }
 
+function signedCashflowAmount(cashflow: CashflowInput): number {
+  switch (cashflow.cashflowType) {
+    case "Withdrawal":
+    case "Tax":
+    case "ManagementFee":
+    case "MarginInterest":
+      return -Math.abs(cashflow.amount);
+    default:
+      return cashflow.amount;
+  }
+}
+
 function signedTradeCashAmount(transaction: TransactionInput): number {
   switch (transaction.transactionType) {
     case "Buy":
@@ -93,6 +105,26 @@ function signedTradeCashAmount(transaction: TransactionInput): number {
     default:
       return 0;
   }
+}
+
+function currentCashflowValueBase(input: {
+  cashflows: CashflowInput[];
+  fxRates: FxRateInput[];
+  baseCurrency: Currency;
+  asOfDate: string;
+}): number {
+  return input.cashflows.reduce((sum, cashflow) => {
+    const signedOriginalAmount = signedCashflowAmount(cashflow);
+    if (cashflow.currency === input.baseCurrency) {
+      return sum + signedOriginalAmount;
+    }
+
+    try {
+      return sum + signedOriginalAmount * getFxRate(input.fxRates, cashflow.currency, input.baseCurrency, input.asOfDate);
+    } catch {
+      return sum + signedBaseCashflowAmount(cashflow);
+    }
+  }, 0);
 }
 
 function marketValueBase(input: {
@@ -148,6 +180,7 @@ export function calculateAccountDailyPerformance(input: {
   const endDate =
     input.endDate ??
     maxDate([
+      ...input.accounts.map((account) => account.initialEntryDate),
       ...input.transactions.map((transaction) => transaction.tradeDate),
       ...input.cashflows.map((cashflow) => cashflow.cashflowDate),
       ...input.prices.map((price) => price.priceDate),
@@ -167,6 +200,7 @@ export function calculateAccountDailyPerformance(input: {
 
   for (const account of input.accounts) {
     let previousNav: number | null = null;
+    let previousFxRevaluationBalance: number | null = null;
     let cumulativePnlBase = 0;
 
     for (const snapshotDate of dates) {
@@ -193,11 +227,24 @@ export function calculateAccountDailyPerformance(input: {
           }),
         0
       );
-      const cashValue =
+      const historicalCashValue =
         accountCashflows.reduce((sum, cashflow) => sum + signedBaseCashflowAmount(cashflow), 0) +
         accountTransactions
           .filter((transaction) => transaction.status === "Settled")
           .reduce((sum, transaction) => sum + signedTradeCashAmount(transaction), 0);
+      const cashValue =
+        currentCashflowValueBase({
+          cashflows: accountCashflows,
+          fxRates: input.fxRates,
+          baseCurrency,
+          asOfDate: snapshotDate
+        }) +
+        accountTransactions
+          .filter((transaction) => transaction.status === "Settled")
+          .reduce((sum, transaction) => sum + signedTradeCashAmount(transaction), 0);
+      const fxRevaluationBalance = roundMoney(cashValue - historicalCashValue);
+      const fxRevaluationPnlBase =
+        previousFxRevaluationBalance === null ? 0 : roundMoney(fxRevaluationBalance - previousFxRevaluationBalance);
       const computedNetAssetValueBase = roundMoney(cashValue + marketValue);
       const anchor = anchorsByAccountDate.get(accountAnchorKey(account.id, snapshotDate));
       const netAssetValueBase = roundMoney(anchor?.netAssetValueBase ?? computedNetAssetValueBase);
@@ -216,13 +263,14 @@ export function calculateAccountDailyPerformance(input: {
 
       rows.push({
         accountId: account.id,
-        accountName: account.institutionName,
+        accountName: account.accountName ?? account.institutionName,
         snapshotDate,
         cashValueBase: roundMoney(cashValue),
         marketValueBase: roundMoney(marketValue),
         computedNetAssetValueBase,
         netAssetValueBase,
         externalCashflowBase,
+        fxRevaluationPnlBase,
         dailyPnlBase,
         cumulativePnlBase,
         dailyReturn,
@@ -232,6 +280,7 @@ export function calculateAccountDailyPerformance(input: {
       });
 
       previousNav = netAssetValueBase;
+      previousFxRevaluationBalance = fxRevaluationBalance;
     }
   }
 

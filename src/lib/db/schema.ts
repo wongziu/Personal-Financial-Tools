@@ -22,6 +22,7 @@ export const idCounters = sqliteTable("id_counters", {
 export const accounts = sqliteTable("accounts", {
   id: text("id").primaryKey(),
   institutionName: text("institution_name").notNull(),
+  accountName: text("account_name").notNull(),
   accountType: text("account_type").notNull(),
   market: text("market").notNull(),
   supportedMarkets: text("supported_markets").notNull().default("[]"),

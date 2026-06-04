@@ -6,6 +6,7 @@ test("loads dashboard and supports language and theme toggles", async ({ page })
   await expect(page.getByText("投资决策系统").first()).toBeVisible();
   await expect(page.getByText("组合净值")).toBeVisible();
   await expect(page.getByText("数据日期")).toBeVisible();
+  await expect(page.getByText("汇兑重估影响")).toBeVisible();
 
   await page.getByRole("combobox", { name: "语言" }).click();
   await page.getByRole("option", { name: "English" }).click();
@@ -82,7 +83,7 @@ test("selects an existing linked account when creating securities", async ({ pag
 
   await expect(dialog.getByRole("combobox", { name: "关联账户" })).toBeVisible();
   await dialog.getByRole("combobox", { name: "关联账户" }).click();
-  await expect(page.getByRole("option", { name: "Demo CN Broker", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Demo CN Broker · CNY", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: /ACC-CN-001/ })).toBeHidden();
 });
 
@@ -125,6 +126,8 @@ test("uses existing securities in transaction and price forms and provides a dat
   await expect(transactionDialog.getByRole("textbox", { name: "交易 ID" })).toBeHidden();
   await expect(transactionDialog.getByText("必填").first()).toBeVisible();
   await expect(transactionDialog.getByText("选填").first()).toBeVisible();
+  await expect(transactionDialog.locator('[data-field-requirement="required"]').first()).toHaveClass(/text-muted-foreground/);
+  await expect(transactionDialog.locator('[data-field-requirement="required"]').first()).not.toHaveClass(/bg-primary/);
   await expect(transactionDialog.getByRole("combobox", { name: "标的" })).toBeVisible();
   await expect(transactionDialog.getByRole("textbox", { name: "标的" })).toBeHidden();
   await transactionDialog.getByRole("combobox", { name: "标的" }).click();
@@ -164,29 +167,34 @@ test("cascades transaction account and security choices by relationship", async 
   const dialog = page.getByRole("dialog");
 
   await dialog.getByRole("combobox", { name: "账户" }).click();
-  await page.getByRole("option", { name: "Demo CN Broker", exact: true }).click();
+  await page.getByRole("option", { name: "Demo CN Broker · CNY", exact: true }).click();
   await dialog.getByRole("combobox", { name: "标的" }).click();
   await expect(page.getByRole("option", { name: "沪深300ETF", exact: true })).toBeVisible();
   await expect(page.getByRole("option", { name: "Apple Inc.", exact: true })).toBeHidden();
   await page.keyboard.press("Escape");
 
   await dialog.getByRole("combobox", { name: "账户" }).click();
-  await page.getByRole("option", { name: "Demo US Broker", exact: true }).click();
+  await page.getByRole("option", { name: "Demo US Broker · USD", exact: true }).click();
   await dialog.getByRole("combobox", { name: "标的" }).click();
   await page.getByRole("option", { name: "Apple Inc.", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "账户" })).toContainText("Demo US Broker");
 
   await dialog.getByRole("combobox", { name: "账户" }).click();
-  await page.getByRole("option", { name: "Demo CN Broker", exact: true }).click();
+  await page.getByRole("option", { name: "Demo CN Broker · CNY", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "标的" })).not.toContainText("Apple Inc.");
 });
 
 test("derives cashflow accounting fields from selected security and type", async ({ page }) => {
   await page.goto("/cashflows");
 
+  await expect(page.getByRole("heading", { name: /现金流/ })).toBeVisible();
+  await expect(page.getByText("现金流/公司行为")).toBeHidden();
+  await expect(page.getByText(/记录账户出入金/)).toBeVisible();
+
   await page.getByRole("button", { name: /新建记录/ }).click();
   const dialog = page.getByRole("dialog");
 
+  await expect(dialog.getByRole("textbox", { name: "现金流 ID" })).toBeHidden();
   await dialog.getByRole("combobox", { name: "标的" }).click();
   await page.getByRole("option", { name: "Apple Inc.", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "账户" })).toContainText("Demo US Broker");
@@ -194,12 +202,51 @@ test("derives cashflow accounting fields from selected security and type", async
 
   await dialog.getByRole("combobox", { name: "类型" }).click();
   await page.getByRole("option", { name: "分红" }).click();
-  await dialog.getByRole("spinbutton", { name: "金额" }).fill("30");
+  await dialog.getByRole("spinbutton", { name: "金额", exact: true }).fill("30");
   await dialog.getByRole("spinbutton", { name: "汇率" }).fill("7.2");
 
-  await expect(dialog.getByRole("status", { name: "基准金额" })).toContainText("216");
+  await expect(dialog.getByText("换算方向：USD → CNY")).toBeVisible();
+  await expect(dialog.getByRole("spinbutton", { name: "基准金额" })).toHaveValue("216");
   await expect(dialog.getByRole("status", { name: "外部现金流" })).toContainText("否");
   await expect(dialog.getByRole("status", { name: "计入收益" })).toContainText("是");
+});
+
+test("supports bidirectional cashflow FX and base amount entry", async ({ page }) => {
+  await page.goto("/cashflows");
+
+  await page.getByRole("button", { name: /新建记录/ }).click();
+  const dialog = page.getByRole("dialog");
+
+  await dialog.getByRole("combobox", { name: "账户" }).click();
+  await page.getByRole("option", { name: "Demo US Broker · USD", exact: true }).click();
+  await dialog.getByRole("combobox", { name: "币种" }).click();
+  await page.getByRole("option", { name: "HKD", exact: true }).click();
+
+  await expect(dialog.getByText("换算方向：HKD → CNY")).toBeVisible();
+
+  await dialog.getByRole("spinbutton", { name: "金额", exact: true }).fill("100");
+  await dialog.getByRole("spinbutton", { name: "汇率" }).fill("0.92");
+  await expect(dialog.getByRole("spinbutton", { name: "基准金额" })).toHaveValue("92");
+
+  await dialog.getByRole("spinbutton", { name: "基准金额" }).fill("100");
+  await expect(dialog.getByRole("spinbutton", { name: "汇率" })).toHaveValue("1");
+});
+
+test("formats cashflow amount columns with grouping and fixed cents", async ({ page }) => {
+  await page.goto("/cashflows");
+
+  await page.getByRole("button", { name: /新建记录/ }).click();
+  const dialog = page.getByRole("dialog");
+
+  await dialog.getByRole("combobox", { name: "账户" }).click();
+  await page.getByRole("option", { name: "Demo US Broker · USD", exact: true }).click();
+  await dialog.getByRole("spinbutton", { name: "金额", exact: true }).fill("11031.56");
+  await dialog.getByRole("spinbutton", { name: "汇率" }).fill("1");
+  await dialog.getByRole("textbox", { name: "数据来源" }).fill("Display format test");
+  await dialog.getByRole("button", { name: "保存" }).click();
+
+  await expect(page.locator('td[data-column="amount"]').filter({ hasText: "11,031.56" })).toBeVisible();
+  await expect(page.locator('td[data-column="amount"]').filter({ hasText: "11031.5600" })).toBeHidden();
 });
 
 test("uses selectors for optional relationship ids instead of manual entry", async ({ page }) => {
@@ -268,6 +315,12 @@ test("filters dated modules through the calendar dimension", async ({ page }) =>
   await expect(page.getByText("TRD-2026-001")).toBeVisible();
   await expect(page.getByText("TRD-2026-002")).toBeVisible();
 
+  const transactionIds = page.locator('tbody [data-column="id"]');
+  await page.getByRole("button", { name: "排序: 成交日期" }).click();
+  await expect(transactionIds).toHaveText(["TRD-2026-001", "TRD-2026-002"]);
+  await page.getByRole("button", { name: "排序: 成交日期" }).click();
+  await expect(transactionIds).toHaveText(["TRD-2026-002", "TRD-2026-001"]);
+
   await page.getByRole("button", { name: /2026-01-03 1 条记录/ }).click();
   await expect(page.getByText("选定日期: 2026-01-03").first()).toBeVisible();
   await expect(page.getByText("TRD-2026-001")).toBeVisible();
@@ -286,6 +339,11 @@ test("keeps master data pages free of misleading calendar panels", async ({ page
 
 test("renders account boolean values as localized labels and distinguishes market badges", async ({ page }) => {
   await page.goto("/accounts");
+
+  await expect(page.getByRole("columnheader", { name: "账户名称" })).toBeVisible();
+  const institutionCells = page.locator('tbody [data-column="institution_name"]');
+  await expect(institutionCells).toHaveCount(1);
+  await expect(institutionCells.first()).toHaveAttribute("rowspan", "2");
 
   const includeCells = page.locator('tbody [data-column="include_in_net_worth"]');
   await expect(includeCells).toHaveCount(2);
@@ -314,6 +372,7 @@ test("groups account entry fields into basic information and strategy restrictio
   await expect(dialog.getByRole("group", { name: "基本信息" })).toBeVisible();
   await expect(dialog.getByRole("group", { name: "策略限制" })).toBeVisible();
   await expect(dialog.getByRole("textbox", { name: "机构名称" })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "账户名称" })).toBeVisible();
   await expect(dialog.locator("#initialEntryDate")).toBeVisible();
   await expect(dialog.getByText("账户类型")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "A 股" })).toHaveAttribute("aria-pressed", "true");
@@ -331,6 +390,7 @@ test("shows account calendar with daily nav pnl and supports nav correction", as
   await expect(page.getByRole("heading", { name: /账户日历/ })).toBeVisible();
   await expect(page.getByText("账户每日净值", { exact: true })).toBeVisible();
   await expect(page.getByText("日盈亏", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("汇兑重估", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("combobox", { name: "账户", exact: true }).click();
   await page.getByRole("option", { name: /Demo CN Broker/ }).click();

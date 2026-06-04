@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarDaysIcon, EyeIcon, FilterXIcon, PencilIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, CalendarDaysIcon, EyeIcon, FilterXIcon, PencilIcon, PlusIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ import { assetTypeRequiresLockup, deriveLiquidityLevel } from "@/lib/security-li
 import {
   buildCalendarMonth,
   filterRowsByDate,
+  formatDateKey,
   getCalendarDateFields,
   getDefaultCalendarColumn,
   getDefaultMonth,
@@ -62,6 +63,37 @@ function displayValue(value: unknown, language: Language): string {
   }
 
   return translateEnum(String(value), language);
+}
+
+function formatAmountValue(value: unknown, language: Language): string {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return displayValue(value, language);
+  }
+
+  return new Intl.NumberFormat(language, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(numberValue);
+}
+
+function isAmountDisplayColumn(column: string): boolean {
+  return (
+    column === "amount" ||
+    column.endsWith("_amount") ||
+    [
+      "gross_amount",
+      "commission",
+      "tax",
+      "other_fees",
+      "market_value_base",
+      "cash_value_base",
+      "net_asset_value_base",
+      "external_cashflow_base",
+      "daily_pnl_base",
+      "cumulative_pnl_base"
+    ].includes(column)
+  );
 }
 
 function displayReferenceValue(value: unknown, options: ReferenceOption[] | undefined, language: Language): string {
@@ -180,6 +212,10 @@ function TableDisplayValue({
     return <Badge variant="outline">{displayValue(value, language)}</Badge>;
   }
 
+  if (isAmountDisplayColumn(column)) {
+    return formatAmountValue(value, language);
+  }
+
   if (column.includes("status") || column.includes("severity")) {
     return <Badge variant="secondary">{displayValue(value, language)}</Badge>;
   }
@@ -218,6 +254,10 @@ function numericFormValue(value: unknown, fallback = 0): number {
 
 function formatDerivedNumber(value: number): string {
   return Number(value.toFixed(4)).toString();
+}
+
+function formatDerivedRate(value: number): string {
+  return Number(value.toFixed(8)).toString();
 }
 
 function selectedAccountMarkets(referenceOptions: ModuleReferenceOptions, accountId: unknown): string[] {
@@ -282,7 +322,8 @@ function isCashflowIncomeType(value: unknown): boolean {
 function syncDerivedFormValues(
   moduleId: string,
   values: Record<string, string | boolean>,
-  referenceOptions: ModuleReferenceOptions = {}
+  referenceOptions: ModuleReferenceOptions = {},
+  changedFieldName?: string
 ): Record<string, string | boolean> {
   if (moduleId === "securities") {
     const next = { ...values };
@@ -336,13 +377,20 @@ function syncDerivedFormValues(
     }
 
     const account = referenceMetadata(referenceOptions.accountId, next.accountId);
-    if (!security.currency && account.currency) {
+    if (!security.currency && account.currency && (changedFieldName === "accountId" || !next.currency)) {
       next.currency = account.currency;
     }
 
-    next.baseCurrencyAmount = formatDerivedNumber(
-      Math.abs(numericFormValue(next.amount)) * numericFormValue(next.fxRate, 1)
-    );
+    const amount = Math.abs(numericFormValue(next.amount));
+    const baseAmount = Math.abs(numericFormValue(next.baseCurrencyAmount));
+    const fxRate = numericFormValue(next.fxRate, 1);
+
+    if (changedFieldName === "baseCurrencyAmount") {
+      next.fxRate = formatDerivedRate(amount > 0 ? baseAmount / amount : fxRate || 1);
+    } else {
+      next.baseCurrencyAmount = formatDerivedNumber(amount * (fxRate || 1));
+    }
+
     next.isExternal = isCashflowExternalType(next.cashflowType);
     next.isInvestmentIncome = isCashflowIncomeType(next.cashflowType);
   }
@@ -410,7 +458,95 @@ function dateRangeLabel(mode: DateFilterMode, month: string, day: string | undef
   return t.allDates;
 }
 
+function mergedAccountInstitutionRowSpan(rows: Row[], index: number, column: string): number {
+  if (column !== "institution_name") {
+    return 1;
+  }
+
+  const value = String(rows[index]?.institution_name ?? "");
+  if (index > 0 && String(rows[index - 1]?.institution_name ?? "") === value) {
+    return 0;
+  }
+
+  let span = 1;
+  for (let nextIndex = index + 1; nextIndex < rows.length; nextIndex += 1) {
+    if (String(rows[nextIndex]?.institution_name ?? "") !== value) {
+      break;
+    }
+    span += 1;
+  }
+
+  return span;
+}
+
+type DateSortDirection = "asc" | "desc";
+
+interface DateSortState {
+  column: string;
+  direction: DateSortDirection;
+}
+
+function sortRowsByDate(rows: Row[], sort: DateSortState | undefined): Row[] {
+  if (!sort) {
+    return rows;
+  }
+
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      const leftDate = formatDateKey(left.row[sort.column]) ?? "";
+      const rightDate = formatDateKey(right.row[sort.column]) ?? "";
+      const dateComparison = leftDate.localeCompare(rightDate);
+      const directionMultiplier = sort.direction === "asc" ? 1 : -1;
+
+      return dateComparison === 0 ? left.index - right.index : dateComparison * directionMultiplier;
+    })
+    .map((item) => item.row);
+}
+
+function nextDateSort(current: DateSortState | undefined, column: string): DateSortState | undefined {
+  if (!current || current.column !== column) {
+    return { column, direction: "asc" };
+  }
+
+  if (current.direction === "asc") {
+    return { column, direction: "desc" };
+  }
+
+  return undefined;
+}
+
+function cashflowContextHint(
+  moduleId: string,
+  fieldName: string,
+  formValues: Record<string, string | boolean>,
+  language: Language
+): string | null {
+  if (moduleId !== "cashflows") {
+    return null;
+  }
+
+  const currency = String(formValues.currency || "CNY");
+
+  if (fieldName === "fxRate") {
+    if (language === "en-US") {
+      return `Conversion direction: ${currency} -> CNY. Enter the rate to calculate the base amount.`;
+    }
+
+    return `${translateText("换算方向", language)}：${currency} → CNY；${translateText("填写汇率后自动计算基准金额。", language)}`;
+  }
+
+  if (fieldName === "baseCurrencyAmount") {
+    return language === "en-US"
+      ? "Enter the base amount to recalculate the FX rate as base amount divided by original amount."
+      : translateText("填写基准金额后，系统会按“基准金额 ÷ 金额”反算汇率。", language);
+  }
+
+  return null;
+}
+
 function FieldControl({
+  moduleId,
   field,
   value,
   disabled = false,
@@ -419,6 +555,7 @@ function FieldControl({
   selectOptions,
   onChange
 }: {
+  moduleId: string;
   field: ModuleField;
   value: string | boolean;
   disabled?: boolean;
@@ -435,6 +572,7 @@ function FieldControl({
     labelEn: field.labelEn,
     language
   });
+  const contextHint = cashflowContextHint(moduleId, field.name, formValues, language);
 
   if (referenceOptions) {
     return (
@@ -567,6 +705,7 @@ function FieldControl({
         required={field.required}
         disabled={disabled}
       />
+      {contextHint ? <p className="text-xs text-muted-foreground">{contextHint}</p> : null}
     </div>
   );
 }
@@ -611,6 +750,7 @@ function ModuleFormGrid({
         return (
           <div key={field.name} className={fieldWrapperClassName(field)}>
             <FieldControl
+              moduleId={moduleId}
               field={field}
               value={formValues[field.name] ?? ""}
               disabled={field.type === "computed" || (isEditing && isFieldReadOnlyOnEdit(field))}
@@ -646,7 +786,7 @@ function ModuleFormGrid({
                     }
                   }
 
-                  return syncDerivedFormValues(moduleId, next, referenceOptions);
+                  return syncDerivedFormValues(moduleId, next, referenceOptions, field.name);
                 })
               }
             />
@@ -679,13 +819,13 @@ function AccountFormContent({
   setFormValues: React.Dispatch<React.SetStateAction<Record<string, string | boolean>>>;
 }) {
   const { language } = useLanguage();
-  const basicFields = fieldsByName(fields, ["id", "institutionName", "accountType", "supportedMarkets", "currency", "dataUpdateMethod"]);
+  const basicFields = fieldsByName(fields, ["id", "institutionName", "accountName", "accountType", "supportedMarkets", "currency", "dataUpdateMethod"]);
   const restrictionFields = fieldsByName(fields, ["allowMarginOrDerivatives", "includeInNetWorth", "initialEntryDate", "notes"]);
   const basicTitle = language === "en-US" ? "Basic Information" : translateText("基本信息", language);
   const basicDescription =
     language === "en-US"
-      ? "Choose or fill account identity, institution, supported markets, currency, and data maintenance method."
-      : translateText("选择或填写账户标识、机构、支持市场、币种和数据维护方式。", language);
+      ? "Choose or fill account identity, institution, account name, supported markets, currency, and data maintenance method."
+      : translateText("选择或填写账户标识、机构、账户名称、支持市场、币种和数据维护方式。", language);
   const restrictionTitle = language === "en-US" ? "Strategy Restrictions" : translateText("策略限制", language);
   const restrictionDescription =
     language === "en-US"
@@ -755,6 +895,7 @@ export function ModulePage({
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("all");
   const [selectedMonth, setSelectedMonth] = useState(() => (initialDateColumn ? getDefaultMonth(rows, initialDateColumn) : new Date().toISOString().slice(0, 7)));
   const [selectedDay, setSelectedDay] = useState<string | undefined>(undefined);
+  const [dateSort, setDateSort] = useState<DateSortState | undefined>(undefined);
   const [isPending, startTransition] = useTransition();
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialFormValues(definition));
 
@@ -776,6 +917,8 @@ export function ModulePage({
       }),
     [dateFilterMode, searchedRows, selectedDateColumn, selectedDay, selectedMonth]
   );
+
+  const tableRows = useMemo(() => sortRowsByDate(filteredRows, dateSort), [dateSort, filteredRows]);
 
   const calendarDays = useMemo(
     () => (selectedDateColumn ? buildCalendarMonth(searchedRows, selectedDateColumn, selectedMonth) : []),
@@ -822,6 +965,10 @@ export function ModulePage({
   const clearDateFilter = () => {
     setDateFilterMode("all");
     setSelectedDay(undefined);
+  };
+
+  const setDateSortColumn = (column: string) => {
+    setDateSort((current) => nextDateSort(current, column));
   };
 
   const submit = () => {
@@ -1060,36 +1207,65 @@ export function ModulePage({
           <Table className="min-w-[980px]">
             <TableHeader>
               <TableRow>
-                {definition.tableColumns.map((column) => (
-                  <TableHead key={column} data-column={column}>
-                    <HeaderHelp
-                      label={translateColumn(definition.table, column, language)}
-                      help={translateColumnHelp(definition.table, column, language)}
-                    />
-                  </TableHead>
-                ))}
+                {definition.tableColumns.map((column) => {
+                  const field = fieldByColumn.get(column);
+                  const label = translateColumn(definition.table, column, language);
+                  const help = translateColumnHelp(definition.table, column, language);
+                  const activeSort = dateSort?.column === column ? dateSort.direction : undefined;
+                  const SortIcon = activeSort === "asc" ? ArrowUpIcon : activeSort === "desc" ? ArrowDownIcon : ArrowUpDownIcon;
+                  const sortLabel = language === "en-US" ? "Sort" : translateText("排序", language);
+
+                  return (
+                    <TableHead key={column} data-column={column}>
+                      {field?.type === "date" ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="-ml-2 h-8 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                            aria-label={`${sortLabel}: ${label}`}
+                            aria-sort={activeSort === "asc" ? "ascending" : activeSort === "desc" ? "descending" : "none"}
+                            onClick={() => setDateSortColumn(column)}
+                          >
+                            <span>{label}</span>
+                            <SortIcon className="ml-1 size-3.5" />
+                          </Button>
+                          <HelpTooltip content={help} label={label} />
+                        </div>
+                      ) : (
+                        <HeaderHelp label={label} help={help} />
+                      )}
+                    </TableHead>
+                  );
+                })}
                 <TableHead data-column="_actions" className="whitespace-nowrap">
                   {t.actions}
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRows.length === 0 ? (
+              {tableRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={definition.tableColumns.length + 1} className="text-center text-muted-foreground">
                     {t.noRecords}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows.map((row, index) => (
+                tableRows.map((row, index) => (
                   <TableRow key={`${definition.id}-${index}`}>
                     {definition.tableColumns.map((column) => {
+                      const rowSpan = definition.id === "accounts" ? mergedAccountInstitutionRowSpan(tableRows, index, column) : 1;
+                      if (rowSpan === 0) {
+                        return null;
+                      }
+
                       const field = fieldByColumn.get(column);
                       const options = field ? referenceOptions[field.name] : undefined;
                       const value = options ? displayReferenceValue(row[column], options, language) : row[column];
 
                       return (
-                        <TableCell key={column} data-column={column}>
+                        <TableCell key={column} data-column={column} rowSpan={rowSpan > 1 ? rowSpan : undefined} className={rowSpan > 1 ? "align-middle" : undefined}>
                           <TableDisplayValue column={column} field={field} value={value} language={language} />
                         </TableCell>
                       );

@@ -104,10 +104,11 @@ export const moduleDefinitions: ModuleDefinition[] = [
     descriptionEn: "Manage funding accounts and account attributes.",
     idPrefix: "ACC",
     calendar: { enabled: false },
-    tableColumns: ["id", "institution_name", "account_type", "supported_markets", "currency", "include_in_net_worth"],
+    tableColumns: ["institution_name", "account_name", "id", "account_type", "supported_markets", "currency", "include_in_net_worth"],
     fields: [
       { name: "id", column: "id", labelZh: "账户 ID", labelEn: "Account ID", type: "text" },
       { name: "institutionName", column: "institution_name", labelZh: "机构名称", labelEn: "Institution", type: "text", required: true },
+      { name: "accountName", column: "account_name", labelZh: "账户名称", labelEn: "Account Name", type: "text", required: true },
       { name: "accountType", column: "account_type", labelZh: "账户类型", labelEn: "Account Type", type: "select", options: ["cash", "margin", "fund", "bank_cash", "pension"], defaultValue: "cash" },
       { name: "supportedMarkets", column: "supported_markets", labelZh: "支持市场", labelEn: "Supported Markets", type: "multi-select", options: ["A-Share", "HK", "US", "MutualFund"], required: true, defaultValue: "A-Share" },
       { name: "currency", column: "currency", labelZh: "币种", labelEn: "Currency", type: "select", options: ["CNY", "HKD", "USD"], defaultValue: "CNY" },
@@ -135,7 +136,7 @@ export const moduleDefinitions: ModuleDefinition[] = [
         labelEn: "Linked Account",
         type: "text",
         required: true,
-        reference: { table: "accounts", valueColumn: "id", labelColumns: ["institution_name"], metadataColumns: ["currency", "supported_markets"] }
+        reference: { table: "accounts", valueColumn: "id", labelColumns: ["account_name", "currency"], metadataColumns: ["institution_name", "currency", "supported_markets"] }
       },
       { name: "name", column: "name", labelZh: "名称", labelEn: "Name", type: "text", required: true },
       { name: "ticker", column: "ticker", labelZh: "代码", labelEn: "Ticker", type: "text", required: true },
@@ -166,7 +167,7 @@ export const moduleDefinitions: ModuleDefinition[] = [
       { name: "id", column: "id", labelZh: "交易 ID", labelEn: "Transaction ID", type: "text", hidden: true },
       { name: "tradeDate", column: "trade_date", labelZh: "成交日期", labelEn: "Trade Date", type: "date", required: true },
       { name: "tradeTime", column: "trade_time", labelZh: "成交时间", labelEn: "Trade Time", type: "text" },
-      { name: "accountId", column: "account_id", labelZh: "账户", labelEn: "Account", type: "text", required: true, reference: { table: "accounts", valueColumn: "id", labelColumns: ["institution_name"], metadataColumns: ["currency"] } },
+      { name: "accountId", column: "account_id", labelZh: "账户", labelEn: "Account", type: "text", required: true, reference: { table: "accounts", valueColumn: "id", labelColumns: ["account_name", "currency"], metadataColumns: ["institution_name", "currency"] } },
       { name: "securityId", column: "security_id", labelZh: "标的", labelEn: "Security", type: "text", required: true, reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
       { name: "strategyType", column: "strategy_type", labelZh: "策略", labelEn: "Strategy", type: "select", options: ["Core", "Active", "Trading", "Experimental"], defaultValue: "Active" },
       {
@@ -210,22 +211,22 @@ export const moduleDefinitions: ModuleDefinition[] = [
   {
     id: "cashflows",
     table: "cashflows",
-    navLabelZh: "现金流/公司行为",
+    navLabelZh: "现金流",
     navLabelEn: "Cashflows",
-    descriptionZh: "区分外部资金变动、收益、费用和公司行为。",
-    descriptionEn: "Separate external capital, income, costs, and corporate actions.",
+    descriptionZh: "记录账户出入金、分红、利息、费用和换汇等现金变动；金额按正数填写，系统根据类型判断方向。",
+    descriptionEn: "Record account deposits, withdrawals, dividends, interest, fees, and FX cash movements. Enter positive amounts; direction is derived from type.",
     idPrefix: "CFL",
     tableColumns: ["id", "cashflow_date", "account_id", "cashflow_type", "amount", "currency", "is_external"],
     fields: [
-      { name: "id", column: "id", labelZh: "现金流 ID", labelEn: "Cashflow ID", type: "text" },
+      { name: "id", column: "id", labelZh: "现金流 ID", labelEn: "Cashflow ID", type: "text", hidden: true },
       { name: "cashflowDate", column: "cashflow_date", labelZh: "日期", labelEn: "Date", type: "date", required: true },
-      { name: "accountId", column: "account_id", labelZh: "账户", labelEn: "Account", type: "text", required: true, reference: { table: "accounts", valueColumn: "id", labelColumns: ["institution_name"], metadataColumns: ["currency"] } },
+      { name: "accountId", column: "account_id", labelZh: "账户", labelEn: "Account", type: "text", required: true, reference: { table: "accounts", valueColumn: "id", labelColumns: ["account_name", "currency"], metadataColumns: ["institution_name", "currency"] } },
       { name: "securityId", column: "security_id", labelZh: "标的", labelEn: "Security", type: "text", reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
-      { name: "cashflowType", column: "cashflow_type", labelZh: "类型", labelEn: "Type", type: "select", options: ["Deposit", "Withdrawal", "Dividend", "Interest", "Tax", "ManagementFee", "MarginInterest", "Split", "RightsIssue", "FX"], defaultValue: "Deposit" },
+      { name: "cashflowType", column: "cashflow_type", labelZh: "类型", labelEn: "Type", type: "select", options: ["Deposit", "Withdrawal", "Dividend", "Interest", "Tax", "ManagementFee", "MarginInterest", "FX"], defaultValue: "Deposit" },
       { name: "amount", column: "amount", labelZh: "金额", labelEn: "Amount", type: "number", required: true },
       { name: "currency", column: "currency", labelZh: "币种", labelEn: "Currency", type: "select", options: ["CNY", "HKD", "USD"], defaultValue: "CNY" },
       { name: "fxRate", column: "fx_rate", labelZh: "汇率", labelEn: "FX Rate", type: "number", defaultValue: 1 },
-      { name: "baseCurrencyAmount", column: "base_currency_amount", labelZh: "基准金额", labelEn: "Base Amount", type: "computed", required: true },
+      { name: "baseCurrencyAmount", column: "base_currency_amount", labelZh: "基准金额", labelEn: "Base Amount", type: "number", required: true },
       { name: "isExternal", column: "is_external", labelZh: "外部现金流", labelEn: "External", type: "computed", defaultValue: true },
       { name: "isInvestmentIncome", column: "is_investment_income", labelZh: "计入收益", labelEn: "Income", type: "computed", defaultValue: false },
       { name: "dataSource", column: "data_source", labelZh: "数据来源", labelEn: "Source", type: "text", required: true },
@@ -424,6 +425,12 @@ export function findModuleDefinition(id: string): ModuleDefinition | undefined {
 }
 
 export function listModuleRows(database: DatabaseContext, definition: ModuleDefinition): Row[] {
+  if (definition.id === "accounts") {
+    return database.sqlite
+      .prepare("SELECT rowid AS _rowid, * FROM accounts ORDER BY institution_name ASC, account_name ASC, currency ASC, rowid DESC")
+      .all() as Row[];
+  }
+
   return database.sqlite.prepare(`SELECT rowid AS _rowid, * FROM ${definition.table} ORDER BY rowid DESC`).all() as Row[];
 }
 
@@ -599,6 +606,10 @@ function buildSecurityIdPrefix(row: Row): string {
 
 function applyDerivedFields(definition: ModuleDefinition, row: Row): void {
   if (definition.id === "accounts") {
+    if (!row.account_name) {
+      row.account_name = row.institution_name;
+    }
+
     const rawMarkets = row.supported_markets;
     const supportedMarkets = parseJsonArray(rawMarkets);
     if (supportedMarkets.length === 0) {
@@ -631,15 +642,38 @@ function applyDerivedFields(definition: ModuleDefinition, row: Row): void {
 
   if (definition.id === "cashflows") {
     const amount = Math.abs(Number(row.amount ?? 0));
-    const fxRate = Number(row.fx_rate ?? 1) || 1;
+    const submittedFxRate = Number(row.fx_rate);
+    const submittedBaseAmount = Math.abs(Number(row.base_currency_amount));
+    const hasFxRate = Number.isFinite(submittedFxRate) && submittedFxRate > 0;
+    const hasBaseAmount = Number.isFinite(submittedBaseAmount) && submittedBaseAmount > 0;
+    const derivedFxRate = amount > 0 && hasBaseAmount ? submittedBaseAmount / amount : 1;
+    const baseFromFxRate = amount * (hasFxRate ? submittedFxRate : derivedFxRate);
+    const relativeBaseDelta =
+      hasBaseAmount && amount > 0 ? Math.abs(baseFromFxRate - submittedBaseAmount) / Math.max(submittedBaseAmount, 1) : Number.POSITIVE_INFINITY;
+    const shouldPreserveSubmittedBase = hasBaseAmount && amount > 0 && (!hasFxRate || relativeBaseDelta <= 0.0001);
+    const fxRate = shouldPreserveSubmittedBase ? derivedFxRate : hasFxRate ? submittedFxRate : 1;
+    const baseAmount = shouldPreserveSubmittedBase ? submittedBaseAmount : amount * fxRate;
     const externalTypes = new Set(["Deposit", "Withdrawal"]);
     const incomeTypes = new Set(["Dividend", "Interest"]);
 
     row.amount = Number(amount.toFixed(4));
-    row.base_currency_amount = Number((amount * fxRate).toFixed(4));
+    row.fx_rate = Number(fxRate.toFixed(10));
+    row.base_currency_amount = Number(baseAmount.toFixed(4));
     row.is_external = externalTypes.has(String(row.cashflow_type)) ? 1 : 0;
     row.is_investment_income = incomeTypes.has(String(row.cashflow_type)) ? 1 : 0;
   }
+}
+
+function nextUnusedBusinessId(database: DatabaseContext, table: string, prefix: string): string {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const id = nextBusinessId(database, prefix);
+    const exists = database.sqlite.prepare(`SELECT 1 FROM ${table} WHERE id = ? LIMIT 1`).get(id);
+    if (!exists) {
+      return id;
+    }
+  }
+
+  throw new Error(`Unable to generate unused id for ${table}`);
 }
 
 export function insertModuleRecord(database: DatabaseContext, moduleId: string, values: Record<string, unknown>): Row {
@@ -656,10 +690,10 @@ export function insertModuleRecord(database: DatabaseContext, moduleId: string, 
 
   const idField = definition.fields.find((field) => field.column === "id");
   if (definition.idPrefix && idField && !row.id) {
-    row.id = nextBusinessId(database, definition.idPrefix);
+    row.id = nextUnusedBusinessId(database, definition.table, definition.idPrefix);
   }
   if (definition.id === "securities" && idField && !row.id) {
-    row.id = nextBusinessId(database, buildSecurityIdPrefix(row));
+    row.id = nextUnusedBusinessId(database, definition.table, buildSecurityIdPrefix(row));
   }
 
   applyDerivedFields(definition, row);

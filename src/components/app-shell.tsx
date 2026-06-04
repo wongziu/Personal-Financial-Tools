@@ -33,7 +33,7 @@ const navItems = [
   { href: "/account-calendar", labelZh: "账户日历", labelEn: "Account Calendar", icon: CalendarDaysIcon },
   { href: "/securities", labelZh: "标的", labelEn: "Securities", icon: DatabaseIcon },
   { href: "/transactions", labelZh: "交易流水", labelEn: "Transactions", icon: ReceiptTextIcon },
-  { href: "/cashflows", labelZh: "现金流/公司行为", labelEn: "Cashflows", icon: BanknoteIcon },
+  { href: "/cashflows", labelZh: "现金流", labelEn: "Cashflows", icon: BanknoteIcon },
   { href: "/prices", labelZh: "价格", labelEn: "Prices", icon: LineChartIcon },
   { href: "/fx-rates", labelZh: "汇率", labelEn: "FX Rates", icon: GlobeIcon },
   { href: "/sources", labelZh: "信息来源", labelEn: "Sources", icon: FileTextIcon },

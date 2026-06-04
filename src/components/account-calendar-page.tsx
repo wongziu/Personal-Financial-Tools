@@ -77,7 +77,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
 
   const accountOptions = data.accounts.map((account) => ({
     value: account.id,
-    label: `${account.institutionName} · ${account.id}`
+    label: `${account.accountName ?? account.institutionName} · ${account.currency}`
   }));
   const selectedRows = useMemo(
     () => data.rows.filter((row) => selectedAccountId === "all" || row.accountId === selectedAccountId),
@@ -94,21 +94,29 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
   const dailyTotals = useMemo(() => {
     const totals = new Map<
       string,
-      { netAssetValueBase: number; dailyPnlBase: number; externalCashflowBase: number; anchoredCount: number }
+      {
+        netAssetValueBase: number;
+        dailyPnlBase: number;
+        externalCashflowBase: number;
+        fxRevaluationPnlBase: number;
+        anchoredCount: number;
+      }
     >();
 
     for (const row of monthRows) {
       const current =
         totals.get(row.snapshotDate) ??
-        ({ netAssetValueBase: 0, dailyPnlBase: 0, externalCashflowBase: 0, anchoredCount: 0 } satisfies {
+        ({ netAssetValueBase: 0, dailyPnlBase: 0, externalCashflowBase: 0, fxRevaluationPnlBase: 0, anchoredCount: 0 } satisfies {
           netAssetValueBase: number;
           dailyPnlBase: number;
           externalCashflowBase: number;
+          fxRevaluationPnlBase: number;
           anchoredCount: number;
         });
       current.netAssetValueBase += row.netAssetValueBase;
       current.dailyPnlBase += row.dailyPnlBase;
       current.externalCashflowBase += row.externalCashflowBase;
+      current.fxRevaluationPnlBase += row.fxRevaluationPnlBase;
       current.anchoredCount += row.isAnchored ? 1 : 0;
       totals.set(row.snapshotDate, current);
     }
@@ -120,6 +128,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
   const latestNav = latestRows.reduce((sum, row) => sum + row.netAssetValueBase, 0);
   const latestPnl = latestRows.reduce((sum, row) => sum + row.dailyPnlBase, 0);
   const latestExternal = latestRows.reduce((sum, row) => sum + row.externalCashflowBase, 0);
+  const latestFxRevaluation = latestRows.reduce((sum, row) => sum + row.fxRevaluationPnlBase, 0);
   const anchoredDays = selectedRows.filter((row) => row.isAnchored).length;
   const weekDays = weekdayLabels(language);
   const accountName = selectedAccountId === "all" ? localize("全部账户", "All Accounts") : accountOptions.find((item) => item.value === selectedAccountId)?.label ?? selectedAccountId;
@@ -175,7 +184,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
         </Badge>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Card className="border-border/70">
           <CardHeader className="pb-2">
             <CardDescription>
@@ -191,6 +200,16 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             </CardDescription>
             <CardTitle className={cn("text-xl", latestPnl > 0 && "text-red-600", latestPnl < 0 && "text-emerald-600")}>
               {formatSigned(latestPnl)}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="border-border/70">
+          <CardHeader className="pb-2">
+            <CardDescription>
+              <HeaderHelp label={localize("汇兑重估", "FX Revaluation")} help={translateUiHelp("accountCalendar.fxRevaluation", language)} />
+            </CardDescription>
+            <CardTitle className={cn("text-xl", latestFxRevaluation > 0 && "text-red-600", latestFxRevaluation < 0 && "text-emerald-600")}>
+              {formatSigned(latestFxRevaluation)}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -393,6 +412,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                     <TableHead><HeaderHelp label={localize("日盈亏", "Daily P&L")} help={translateUiHelp("accountCalendar.pnlColumn", language)} /></TableHead>
                     <TableHead><HeaderHelp label={localize("日收益率", "Daily Return")} help={translateUiHelp("accountCalendar.returnColumn", language)} /></TableHead>
                     <TableHead><HeaderHelp label={localize("外部现金流", "External Cashflow")} help={translateUiHelp("accountCalendar.cashflowColumn", language)} /></TableHead>
+                    <TableHead><HeaderHelp label={localize("汇兑重估", "FX Revaluation")} help={translateUiHelp("accountCalendar.fxColumn", language)} /></TableHead>
                     <TableHead><HeaderHelp label={localize("持仓市值", "Market Value")} help={translateUiHelp("accountCalendar.marketColumn", language)} /></TableHead>
                     <TableHead><HeaderHelp label={localize("现金价值", "Cash Value")} help={translateUiHelp("accountCalendar.cashColumn", language)} /></TableHead>
                     <TableHead><HeaderHelp label={localize("校准", "Anchor")} help={translateUiHelp("accountCalendar.anchorColumn", language)} /></TableHead>
@@ -401,7 +421,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                 <TableBody>
                   {visibleRows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground">
                         {t.noRecords}
                       </TableCell>
                     </TableRow>
@@ -419,6 +439,9 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                         </TableCell>
                         <TableCell>{row.dailyReturn === null ? "N/A" : percentFormatter.format(row.dailyReturn)}</TableCell>
                         <TableCell>{formatSigned(row.externalCashflowBase)}</TableCell>
+                        <TableCell className={cn(row.fxRevaluationPnlBase > 0 && "text-red-600", row.fxRevaluationPnlBase < 0 && "text-emerald-600")}>
+                          {formatSigned(row.fxRevaluationPnlBase)}
+                        </TableCell>
                         <TableCell>{formatMoney(row.marketValueBase)}</TableCell>
                         <TableCell>{formatMoney(row.cashValueBase)}</TableCell>
                         <TableCell>

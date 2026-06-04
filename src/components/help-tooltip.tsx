@@ -2,9 +2,9 @@
 
 import { CircleHelpIcon } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export function HelpTooltip({ content, label }: { content: string; label: string }) {
   const { language } = useLanguage();
@@ -30,7 +30,7 @@ export function HelpTooltip({ content, label }: { content: string; label: string
 
 function requirementLabel(required: boolean | undefined, language: string): string {
   if (language === "en-US") {
-    return required ? "Required" : "Optional";
+    return required ? "required" : "optional";
   }
   if (language === "zh-TW") {
     return required ? "必填" : "選填";
@@ -38,15 +38,27 @@ function requirementLabel(required: boolean | undefined, language: string): stri
   return required ? "必填" : "选填";
 }
 
-export function FieldLabel({ htmlFor, label, help, required }: { htmlFor?: string; label: string; help: string; required?: boolean }) {
+function FieldRequirementIndicator({ required }: { required?: boolean }) {
   const { language } = useLanguage();
 
   return (
+    <span
+      data-field-requirement={required ? "required" : "optional"}
+      className={cn(
+        "select-none text-[11px] font-normal leading-none text-muted-foreground",
+        required ? "opacity-80" : "opacity-60"
+      )}
+    >
+      ({requirementLabel(required, language)})
+    </span>
+  );
+}
+
+export function FieldLabel({ htmlFor, label, help, required }: { htmlFor?: string; label: string; help: string; required?: boolean }) {
+  return (
     <div className="flex items-center gap-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
-      <Badge variant={required ? "default" : "outline"} className="h-5 px-1.5 text-[10px] font-medium">
-        {requirementLabel(required, language)}
-      </Badge>
+      <FieldRequirementIndicator required={required} />
       <HelpTooltip content={help} label={label} />
     </div>
   );

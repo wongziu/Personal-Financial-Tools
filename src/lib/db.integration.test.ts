@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { shouldSeedDemoData } from "@/lib/app-db";
-import { createDatabase } from "@/lib/db/client";
+import { createDatabase, initializeDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
 import { buildModuleReferenceOptions, findModuleDefinition, insertModuleRecord, listModuleRows, updateModuleRecord } from "@/lib/modules";
 import { createTradeDecisionWithRisk, getAccountCalendarData, getDashboardData, listAllExportData } from "@/lib/services";
@@ -92,11 +92,13 @@ describe("database integration", () => {
     seedDemoData(database);
     const accountsDefinition = findModuleDefinition("accounts");
     expect(accountsDefinition).toBeDefined();
+    expect(accountsDefinition?.tableColumns.slice(0, 2)).toEqual(["institution_name", "account_name"]);
     expect(accountsDefinition?.tableColumns).toContain("supported_markets");
     expect(accountsDefinition?.tableColumns).not.toContain("market");
 
     const inserted = insertModuleRecord(database, "accounts", {
       institutionName: "Multi-market broker",
+      accountName: "USD trading account",
       accountType: "cash",
       supportedMarkets: "US, HK, A-Share",
       currency: "USD",
@@ -106,6 +108,7 @@ describe("database integration", () => {
       dataUpdateMethod: "Manual"
     });
 
+    expect(inserted.account_name).toBe("USD trading account");
     expect(inserted.supported_markets).toBe(JSON.stringify(["US", "HK", "A-Share"]));
     expect(inserted.market).toBe("US");
 
@@ -115,6 +118,7 @@ describe("database integration", () => {
 
     const updated = updateModuleRecord(database, "accounts", stored._rowid, {
       institutionName: "Multi-market broker",
+      accountName: "HKD trading account",
       accountType: "cash",
       supportedMarkets: "HK, US",
       currency: "USD",
@@ -124,8 +128,42 @@ describe("database integration", () => {
       dataUpdateMethod: "Manual"
     });
 
+    expect(updated.account_name).toBe("HKD trading account");
     expect(updated.supported_markets).toBe(JSON.stringify(["HK", "US"]));
     expect(updated.market).toBe("HK");
+  });
+
+  test("backfills readable account names for legacy known accounts", () => {
+    const database = createDatabase(":memory:");
+    database.sqlite
+      .prepare(
+        `INSERT INTO accounts (
+          id, institution_name, account_type, market, supported_markets, currency,
+          allow_margin_or_derivatives, include_in_net_worth,
+          initial_entry_date, data_update_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "ACC-HSBC-HK-001",
+        "香港上海汇丰银行有限公司",
+        "cash",
+        "HK",
+        JSON.stringify(["HK", "US"]),
+        "HKD",
+        0,
+        1,
+        "2026-01-01",
+        "Manual",
+        null
+      );
+
+    initializeDatabase(database.sqlite);
+
+    const account = database.sqlite
+      .prepare("SELECT account_name FROM accounts WHERE id = ?")
+      .get("ACC-HSBC-HK-001") as { account_name: string };
+
+    expect(account.account_name).toBe("汇丰全速易 HKD");
   });
 
   test("builds account and security reference options with display names and relationship metadata", () => {
@@ -141,7 +179,7 @@ describe("database integration", () => {
     expect(apple?.label).toBe("Apple Inc.");
     expect(apple?.label).not.toContain("US-AAPL");
     expect(apple?.metadata.account_id).toBe("ACC-US-001");
-    expect(usAccount?.label).toBe("Demo US Broker");
+    expect(usAccount?.label).toBe("Demo US Broker · USD");
     expect(usAccount?.label).not.toContain("ACC-US-001");
   });
 
@@ -157,6 +195,167 @@ describe("database integration", () => {
     const after = getDashboardData(database).metrics.portfolioNetValue;
 
     expect(after).toBeGreaterThan(before);
+  });
+
+  test("uses cashflow base amounts for dashboard cash NAV without requiring a separate FX quote", () => {
+    const database = createDatabase(":memory:");
+    database.sqlite
+      .prepare(
+        `INSERT INTO accounts (
+          id, institution_name, account_type, market, supported_markets, currency,
+          allow_margin_or_derivatives, include_in_net_worth,
+          initial_entry_date, data_update_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "ACC-HSBC-HK-001",
+        "香港上海汇丰银行有限公司",
+        "cash",
+        "HK",
+        JSON.stringify(["HK", "US"]),
+        "HKD",
+        0,
+        1,
+        "2026-05-01",
+        "Manual",
+        null
+      );
+
+    insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2025-10-02",
+      accountId: "ACC-HSBC-HK-001",
+      cashflowType: "Deposit",
+      amount: 3264.56,
+      currency: "HKD",
+      fxRate: 0.919,
+      baseCurrencyAmount: 3000.1306,
+      dataSource: "Manual"
+    });
+
+    const dashboard = getDashboardData(database);
+
+    expect(dashboard.metrics.cashValueBase).toBeCloseTo(3000.1306, 5);
+    expect(dashboard.metrics.portfolioNetValue).toBeCloseTo(3000.1306, 5);
+    expect(dashboard.metrics.fxRevaluationBase).toBeCloseTo(0, 5);
+  });
+
+  test("revalues dashboard foreign cash with the latest available fx rate", () => {
+    const database = createDatabase(":memory:");
+    database.sqlite
+      .prepare(
+        `INSERT INTO accounts (
+          id, institution_name, account_name, account_type, market, supported_markets, currency,
+          allow_margin_or_derivatives, include_in_net_worth,
+          initial_entry_date, data_update_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "ACC-US-001",
+        "Demo US Broker",
+        "USD Cash Account",
+        "cash",
+        "US",
+        JSON.stringify(["US"]),
+        "USD",
+        0,
+        1,
+        "2026-01-01",
+        "Manual",
+        null
+      );
+
+    insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2026-01-01",
+      accountId: "ACC-US-001",
+      cashflowType: "Deposit",
+      amount: 5000,
+      currency: "USD",
+      fxRate: 7.2,
+      baseCurrencyAmount: 36000,
+      dataSource: "Manual"
+    });
+    database.sqlite
+      .prepare("INSERT INTO fx_rates (rate_date, from_currency, to_currency, rate, source) VALUES (?, ?, ?, ?, ?)")
+      .run("2026-01-02", "USD", "CNY", 6.8, "Latest valuation FX");
+
+    const dashboard = getDashboardData(database);
+
+    expect(dashboard.metrics.cashValueBase).toBeCloseTo(34000, 5);
+    expect(dashboard.metrics.portfolioNetValue).toBeCloseTo(34000, 5);
+    expect(dashboard.metrics.fxRevaluationBase).toBeCloseTo(-2000, 5);
+  });
+
+  test("uses the latest fx table date for dashboard cash even when price data is older", () => {
+    const database = createDatabase(":memory:");
+    database.sqlite
+      .prepare(
+        `INSERT INTO accounts (
+          id, institution_name, account_name, account_type, market, supported_markets, currency,
+          allow_margin_or_derivatives, include_in_net_worth,
+          initial_entry_date, data_update_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "ACC-US-001",
+        "Demo US Broker",
+        "USD Cash Account",
+        "cash",
+        "US",
+        JSON.stringify(["US"]),
+        "USD",
+        0,
+        1,
+        "2026-01-01",
+        "Manual",
+        null
+      );
+    database.sqlite
+      .prepare(
+        `INSERT INTO securities (
+          id, name, ticker, asset_type, market, currency, industry_level_1,
+          industry_level_2, risk_theme_tags, liquidity_level, investment_status, benchmark,
+          fee_note, complexity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "US-DUMMY",
+        "Dummy Security",
+        "DUMMY",
+        "Stock",
+        "US",
+        "USD",
+        "InformationTechnology",
+        "Software",
+        JSON.stringify([]),
+        "High",
+        "Allowed",
+        "S&P 500",
+        null,
+        "Simple"
+      );
+
+    insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2026-01-01",
+      accountId: "ACC-US-001",
+      cashflowType: "Deposit",
+      amount: 5000,
+      currency: "USD",
+      fxRate: 7.2,
+      baseCurrencyAmount: 36000,
+      dataSource: "Manual"
+    });
+    database.sqlite
+      .prepare("INSERT INTO market_prices (price_date, security_id, close_price, currency, source) VALUES (?, ?, ?, ?, ?)")
+      .run("2026-01-01", "US-DUMMY", 100, "USD", "Stale price");
+    database.sqlite
+      .prepare("INSERT INTO fx_rates (rate_date, from_currency, to_currency, rate, source) VALUES (?, ?, ?, ?, ?)")
+      .run("2026-01-02", "USD", "CNY", 6.8, "Latest valuation FX");
+
+    const dashboard = getDashboardData(database);
+
+    expect(dashboard.asOfDate).toBe("2026-01-02");
+    expect(dashboard.metrics.cashValueBase).toBeCloseTo(34000, 5);
+    expect(dashboard.metrics.fxRevaluationBase).toBeCloseTo(-2000, 5);
   });
 
   test("updates an existing module record while keeping its business identifier locked", () => {
@@ -498,6 +697,69 @@ describe("database integration", () => {
     expect(dividend.base_currency_amount).toBe(216);
     expect(dividend.is_external).toBe(0);
     expect(dividend.is_investment_income).toBe(1);
+  });
+
+  test("derives cashflow FX rate from submitted base amount when rate is not usable", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+
+    const inserted = insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2026-06-03",
+      accountId: "ACC-US-001",
+      cashflowType: "Dividend",
+      amount: 100,
+      currency: "HKD",
+      fxRate: 0,
+      baseCurrencyAmount: 92,
+      dataSource: "Manual"
+    });
+
+    expect(inserted.amount).toBe(100);
+    expect(inserted.fx_rate).toBe(0.92);
+    expect(inserted.base_currency_amount).toBe(92);
+  });
+
+  test("preserves submitted cashflow base amount when derived FX rate was rounded by the form", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+
+    const inserted = insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2026-06-03",
+      accountId: "ACC-US-001",
+      cashflowType: "Deposit",
+      amount: 11031.56,
+      currency: "HKD",
+      fxRate: 0.9065,
+      baseCurrencyAmount: 10000,
+      dataSource: "Manual"
+    });
+
+    expect(inserted.amount).toBe(11031.56);
+    expect(inserted.base_currency_amount).toBe(10000);
+    expect(inserted.fx_rate).toBeCloseTo(10000 / 11031.56, 10);
+  });
+
+  test("treats cashflows as cash movements with system generated identifiers", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const definition = findModuleDefinition("cashflows");
+
+    expect(definition?.navLabelZh).toBe("现金流");
+    expect(definition?.descriptionZh).toContain("账户出入金");
+    expect(definition?.descriptionZh).not.toContain("公司行为");
+    expect(definition?.fields.find((field) => field.name === "id")?.hidden).toBe(true);
+
+    const inserted = insertModuleRecord(database, "cashflows", {
+      cashflowDate: "2026-06-03",
+      accountId: "ACC-CN-001",
+      cashflowType: "Deposit",
+      amount: 1000,
+      currency: "CNY",
+      fxRate: 1,
+      dataSource: "Manual"
+    });
+
+    expect(inserted.id).toMatch(/^CFL-\d{4}-003$/);
   });
 
   test("rejects direct edits to settled transactions", () => {

@@ -199,6 +199,7 @@ describe("portfolio calculation", () => {
         {
           id: "ACC-CN-001",
           institutionName: "Demo Broker",
+          accountName: "Demo CNY Account",
           includeInNetWorth: true,
           initialEntryDate: "2026-01-01"
         }
@@ -336,6 +337,88 @@ describe("portfolio calculation", () => {
 
     expect(openingAnchorRows[0]?.netAssetValueBase).toBe(1000);
     expect(openingAnchorRows[0]?.dailyPnlBase).toBe(0);
+  });
+
+  test("includes account initial dates when cashflows predate the account entry date", () => {
+    const rows = calculateAccountDailyPerformance({
+      accounts: [
+        {
+          id: "ACC-HSBC-HK-001",
+          institutionName: "香港上海汇丰银行有限公司",
+          accountName: "汇丰全速易 HKD",
+          includeInNetWorth: true,
+          initialEntryDate: "2026-05-01"
+        }
+      ],
+      transactions: [],
+      cashflows: [
+        {
+          id: "CFL-2026-001",
+          accountId: "ACC-HSBC-HK-001",
+          cashflowType: "Deposit",
+          currency: "HKD",
+          amount: 3264.56,
+          baseCurrencyAmount: 3000.1306,
+          isExternal: true,
+          isInvestmentIncome: false,
+          cashflowDate: "2025-10-02"
+        }
+      ],
+      prices: [],
+      fxRates: [],
+      securities: [],
+      navAnchors: []
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      accountId: "ACC-HSBC-HK-001",
+      snapshotDate: "2026-05-01",
+      cashValueBase: 3000.1306,
+      netAssetValueBase: 3000.1306
+    });
+  });
+
+  test("revalues foreign cash balances with the latest fx rate and separates daily fx revaluation pnl", () => {
+    const rows = calculateAccountDailyPerformance({
+      accounts: [
+        {
+          id: "ACC-US-001",
+          institutionName: "Demo Broker",
+          accountName: "USD Cash",
+          includeInNetWorth: true,
+          initialEntryDate: "2026-01-01"
+        }
+      ],
+      transactions: [],
+      cashflows: [
+        {
+          id: "CFL-USD-001",
+          accountId: "ACC-US-001",
+          cashflowType: "Deposit",
+          currency: "USD",
+          amount: 5000,
+          baseCurrencyAmount: 36000,
+          isExternal: true,
+          isInvestmentIncome: false,
+          cashflowDate: "2026-01-01"
+        }
+      ],
+      prices: [],
+      fxRates: [
+        { rateDate: "2026-01-01", fromCurrency: "USD", toCurrency: "CNY", rate: 7.2 },
+        { rateDate: "2026-01-02", fromCurrency: "USD", toCurrency: "CNY", rate: 6.8 }
+      ],
+      securities: [],
+      navAnchors: [],
+      startDate: "2026-01-01",
+      endDate: "2026-01-02"
+    });
+
+    expect(rows.map((row) => [row.snapshotDate, row.cashValueBase, row.netAssetValueBase, row.dailyPnlBase, row.fxRevaluationPnlBase])).toEqual([
+      ["2026-01-01", 36000, 36000, 0, 0],
+      ["2026-01-02", 34000, 34000, -2000, -2000]
+    ]);
   });
 });
 

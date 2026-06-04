@@ -29,6 +29,18 @@ function signedCashflowAmount(cashflow: CashflowInput): number {
   }
 }
 
+function signedBaseCashflowAmount(cashflow: CashflowInput): number {
+  switch (cashflow.cashflowType) {
+    case "Withdrawal":
+    case "Tax":
+    case "ManagementFee":
+    case "MarginInterest":
+      return -Math.abs(cashflow.baseCurrencyAmount);
+    default:
+      return cashflow.baseCurrencyAmount;
+  }
+}
+
 function signedTradeCashAmount(transaction: TransactionInput): number {
   switch (transaction.transactionType) {
     case "Buy":
@@ -116,6 +128,30 @@ export function calculateCashBalances(
   return balances;
 }
 
+export function calculateBaseCashValue(cashflows: CashflowInput[], transactions: TransactionInput[]): number {
+  return [...calculateBaseCashValueFallbacks(cashflows, transactions).values()].reduce((sum, value) => sum + value, 0);
+}
+
+export function calculateBaseCashValueFallbacks(
+  cashflows: CashflowInput[],
+  transactions: TransactionInput[],
+  baseCurrency: Currency = "CNY"
+): Map<string, number> {
+  const fallbacks = new Map<string, number>();
+
+  for (const cashflow of cashflows) {
+    const key = cashKey(cashflow.accountId, cashflow.currency);
+    fallbacks.set(key, (fallbacks.get(key) ?? 0) + signedBaseCashflowAmount(cashflow));
+  }
+
+  for (const transaction of transactions.filter((item) => item.status === "Settled")) {
+    const key = cashKey(transaction.accountId, baseCurrency);
+    fallbacks.set(key, (fallbacks.get(key) ?? 0) + signedTradeCashAmount(transaction));
+  }
+
+  return fallbacks;
+}
+
 function latestByDate<T>(items: T[], dateOf: (item: T) => string, asOfDate: string): T | undefined {
   return items
     .filter((item) => dateOf(item) <= asOfDate)
@@ -152,6 +188,8 @@ export function calculatePortfolioSnapshot(input: {
   asOfDate: string;
   holdings: Holding[];
   cashBalances: Map<string, number>;
+  cashValueBaseOverride?: number;
+  cashValueBaseFallbacks?: Map<string, number>;
   prices: MarketPriceInput[];
   fxRates: FxRateInput[];
   securities: SecurityReference[];
@@ -183,10 +221,20 @@ export function calculatePortfolioSnapshot(input: {
     };
   });
 
-  const cashValueBase = [...input.cashBalances.entries()].reduce((sum, [key, amount]) => {
-    const [, currency] = key.split(":") as [string, Currency];
-    return sum + amount * getFxRate(input.fxRates, currency, baseCurrency, input.asOfDate);
-  }, 0);
+  const cashValueBase =
+    input.cashValueBaseOverride ??
+    [...input.cashBalances.entries()].reduce((sum, [key, amount]) => {
+      const [, currency] = key.split(":") as [string, Currency];
+      try {
+        return sum + amount * getFxRate(input.fxRates, currency, baseCurrency, input.asOfDate);
+      } catch (error) {
+        const fallback = input.cashValueBaseFallbacks?.get(key);
+        if (fallback !== undefined) {
+          return sum + fallback;
+        }
+        throw error;
+      }
+    }, 0);
   const portfolioNetValue = positions.reduce((sum, position) => sum + position.marketValueBase, 0) + cashValueBase;
   const riskThemeWeights = new Map<string, number>();
   const industryWeights = new Map<string, number>();

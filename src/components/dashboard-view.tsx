@@ -7,10 +7,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { translateColumn, translateColumnHelp, translateEnum, translateUiHelp } from "@/lib/i18n";
+import { translateColumn, translateColumnHelp, translateEnum, translateText, translateUiHelp } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
-function money(value: number, currency: string) {
-  return new Intl.NumberFormat("zh-CN", { style: "currency", currency }).format(value);
+function money(value: number, currency: string, language: string) {
+  return new Intl.NumberFormat(language, { style: "currency", currency }).format(value);
 }
 
 function percent(value: number) {
@@ -19,10 +20,19 @@ function percent(value: number) {
 
 export function DashboardView({ data }: { data: DashboardData }) {
   const { language, t } = useLanguage();
+  const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
+  const formatMoney = (value: number) => money(value, data.baseCurrency, language);
+  const formatSignedMoney = (value: number) => `${value > 0 ? "+" : ""}${formatMoney(value)}`;
   const metricCards = [
-    { label: t.portfolioNetValue, value: money(data.metrics.portfolioNetValue, data.baseCurrency), helpKey: "dashboard.portfolioNetValue" },
+    { label: t.portfolioNetValue, value: formatMoney(data.metrics.portfolioNetValue), helpKey: "dashboard.portfolioNetValue" },
     { label: t.asOfDate, value: data.asOfDate, helpKey: "dashboard.asOfDate" },
-    { label: t.cashValue, value: money(data.metrics.cashValueBase, data.baseCurrency), helpKey: "dashboard.cashValue" },
+    { label: t.cashValue, value: formatMoney(data.metrics.cashValueBase), helpKey: "dashboard.cashValue" },
+    {
+      label: localize("汇兑重估影响", "FX Revaluation"),
+      value: formatSignedMoney(data.metrics.fxRevaluationBase),
+      helpKey: "dashboard.fxRevaluation",
+      valueClassName: cn(data.metrics.fxRevaluationBase > 0 && "text-red-600", data.metrics.fxRevaluationBase < 0 && "text-emerald-600")
+    },
     { label: t.largestHolding, value: `${data.metrics.largestHoldingName} · ${percent(data.metrics.largestHoldingWeight)}`, helpKey: "dashboard.largestHolding" },
     { label: t.maxTheme, value: `${data.metrics.maxThemeName} · ${percent(data.metrics.maxThemeWeight)}`, helpKey: "dashboard.maxTheme" }
   ];
@@ -36,14 +46,14 @@ export function DashboardView({ data }: { data: DashboardData }) {
         </h1>
         <p className="text-sm text-muted-foreground">{t.holdingsAndNavDescription}</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {metricCards.map((metric) => (
           <Card key={metric.label}>
             <CardHeader className="pb-2">
               <CardDescription>
                 <HeaderHelp label={metric.label} help={translateUiHelp(metric.helpKey, language)} />
               </CardDescription>
-              <CardTitle className="text-xl">{metric.value}</CardTitle>
+              <CardTitle className={cn("text-xl", metric.valueClassName)}>{metric.value}</CardTitle>
             </CardHeader>
           </Card>
         ))}
@@ -77,7 +87,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
                     <TableCell>{String(position.security_name)}</TableCell>
                     <TableCell>{translateEnum(position.strategy_type, language)}</TableCell>
                     <TableCell>{Number(position.quantity).toFixed(2)}</TableCell>
-                    <TableCell>{money(position.marketValueBase, data.baseCurrency)}</TableCell>
+                    <TableCell>{formatMoney(position.marketValueBase)}</TableCell>
                     <TableCell>{percent(position.weight)}</TableCell>
                   </TableRow>
                 ))}

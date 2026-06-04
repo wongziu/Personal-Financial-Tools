@@ -120,7 +120,7 @@ const zhCN: Dictionary = {
   maxTheme: "最大主题暴露",
   records: "条记录",
   holdingsAndNav: "持仓与净值",
-  holdingsAndNavDescription: "由已结算交易、手动价格和汇率计算。",
+  holdingsAndNavDescription: "由已结算交易、手动价格和最新可用汇率计算。",
   weakRiskDescription: "弱提示；允许执行，但硬限制会生成审计草稿。",
   exportDescription: "将 V1 所有模块导出为一个包含多个 sheet 的工作簿。",
   exportWorkbookDescription: "账户、标的、交易、现金流、价格、汇率、信息来源、论点、事件、决策、风险规则和例外。",
@@ -198,7 +198,7 @@ const enUS: Dictionary = {
   maxTheme: "Max Theme Exposure",
   records: "records",
   holdingsAndNav: "Holdings & NAV",
-  holdingsAndNavDescription: "Calculated from settled trades, manual prices, and FX rates.",
+  holdingsAndNavDescription: "Calculated from settled trades, manual prices, and the latest available FX rates.",
   weakRiskDescription: "Weak warnings; execution is allowed, with hard limits creating audit drafts.",
   exportDescription: "Export all V1 modules into one workbook with multiple sheets.",
   exportWorkbookDescription:
@@ -259,6 +259,7 @@ const tableColumns: Record<string, Record<string, { zh: string; en: string }>> =
   accounts: {
     id: { zh: "账户 ID", en: "Account ID" },
     institution_name: { zh: "机构名称", en: "Institution" },
+    account_name: { zh: "账户名称", en: "Account Name" },
     account_type: { zh: "账户类型", en: "Account Type" },
     market: { zh: "市场", en: "Market" },
     supported_markets: { zh: "支持市场", en: "Supported Markets" },
@@ -392,12 +393,16 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     en: "Total converted value of holdings and cash for accounts included in NAV."
   },
   "dashboard.asOfDate": {
-    zh: "仪表盘计算采用的价格日期。系统会使用当前已录入价格中的最新日期重新计算。",
-    en: "Price date used for dashboard calculations. The system recomputes from the latest entered market date."
+    zh: "仪表盘计算采用的数据日期。系统会取价格、汇率、交易、现金流和校准净值中的最新日期，再对价格和汇率使用该日期前最新可用记录。",
+    en: "Data date used for dashboard calculations. The system takes the latest date across prices, FX, trades, cashflows, and NAV anchors, then uses the latest available price and FX on or before that date."
   },
   "dashboard.cashValue": {
-    zh: "按账户和币种汇总现金余额，再折算为基准货币后的金额。",
-    en: "Cash balances grouped by account and currency, converted into the base currency."
+    zh: "按账户和币种汇总现金余额，再使用数据日期最新可用汇率折算为基准货币；缺少汇率时才回退到现金流历史基准金额。",
+    en: "Cash balances grouped by account and currency, converted with the latest available FX on the data date; falls back to historical cashflow base amounts only when FX is missing."
+  },
+  "dashboard.fxRevaluation": {
+    zh: "当前现金价值与现金流历史基准金额之间的差额。它反映外币现金因最新汇率变化产生的累计重估影响，不会改写原现金流的入账汇率。",
+    en: "Difference between current cash value and historical cashflow base amounts. It shows cumulative revaluation from latest FX changes without rewriting original cashflow FX rates."
   },
   "dashboard.largestHolding": {
     zh: "当前权重最高的单一标的，用于识别集中度风险。",
@@ -532,8 +537,12 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     en: "Account NAV on the latest data date. If a same-day anchor exists, the anchored NAV is used."
   },
   "accountCalendar.dailyPnl": {
-    zh: "当日净值减前一日净值，再扣除当日外部现金流。入金和出金不计入投资盈亏。",
-    en: "Current NAV minus prior-day NAV, excluding same-day external cashflow. Deposits and withdrawals are not investment P&L."
+    zh: "当日净值减前一日净值，再扣除当日外部现金流。该数值包含持仓价格变动和外币现金汇兑重估，入金和出金不计入投资盈亏。",
+    en: "Current NAV minus prior-day NAV, excluding same-day external cashflow. It includes position price changes and foreign-cash FX revaluation; deposits and withdrawals are not investment P&L."
+  },
+  "accountCalendar.fxRevaluation": {
+    zh: "外币现金余额按估值日最新可用汇率重估产生的当日汇兑损益。现金流仍保留交易日汇率和历史基准金额。",
+    en: "Daily FX revaluation P&L from valuing foreign-currency cash balances at the latest available valuation-date FX. Cashflows keep their trade-date FX and historical base amounts."
   },
   "accountCalendar.externalCashflow": {
     zh: "当日来自组合外部的资金变动，例如入金或出金，用于从日盈亏中剔除资金进出影响。",
@@ -576,8 +585,8 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     en: "Daily account NAV: cash value plus holding market value; anchored NAV overrides computed NAV."
   },
   "accountCalendar.pnlColumn": {
-    zh: "日盈亏 = 当日净值 - 前日净值 - 当日外部现金流。",
-    en: "Daily P&L = current NAV - prior NAV - same-day external cashflow."
+    zh: "日盈亏 = 当日净值 - 前日净值 - 当日外部现金流，包含持仓涨跌和汇兑重估。",
+    en: "Daily P&L = current NAV - prior NAV - same-day external cashflow, including price movement and FX revaluation."
   },
   "accountCalendar.returnColumn": {
     zh: "日盈亏除以前一日净值。首日或前日净值为零时不展示。",
@@ -587,13 +596,17 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     zh: "当日外部入金或出金，作为资金进出从投资盈亏中剔除。",
     en: "Same-day external deposit or withdrawal, excluded from investment P&L."
   },
+  "accountCalendar.fxColumn": {
+    zh: "当日外币现金按最新汇率重估产生的盈亏，是日盈亏的一部分，不是新的现金流。",
+    en: "Same-day P&L from revaluing foreign cash at the latest FX. It is part of daily P&L, not a new cashflow."
+  },
   "accountCalendar.marketColumn": {
     zh: "当日持仓按最新可用价格和汇率折算的市值；缺少价格时暂按成本口径兜底。",
     en: "Holding value converted by latest available price and FX; falls back to cost when price is missing."
   },
   "accountCalendar.cashColumn": {
-    zh: "由现金流和已结算交易推算出的账户现金价值，按基准货币展示。",
-    en: "Account cash value derived from cashflows and settled trades, shown in base currency."
+    zh: "由现金流和已结算交易推算出的账户现金价值，外币现金按当日最新可用汇率折算；缺少汇率时回退到历史基准金额。",
+    en: "Account cash value derived from cashflows and settled trades. Foreign cash is converted at the latest available daily FX; missing FX falls back to historical base amounts."
   },
   "accountCalendar.anchorColumn": {
     zh: "标记该日是否使用了手工校准净值。校准会影响当日及相邻日期的日盈亏。",
@@ -607,8 +620,12 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "Unique internal identifier. Leave it blank when this module supports automatic ID generation."
   },
   institution_name: {
-    zh: "开户券商、银行、基金平台或其他资金托管机构名称。",
-    en: "Broker, bank, fund platform, or other custody institution name."
+    zh: "开户券商、银行、基金平台或其他资金托管机构的公司主体名称。同一机构下可以有多个账户。",
+    en: "Legal or business entity for the broker, bank, fund platform, or custodian. One institution can hold multiple accounts."
+  },
+  account_name: {
+    zh: "用于日常识别的账户名称。建议包含平台、账户用途或币种，例如“汇丰全速易 HKD”。",
+    en: "Human-readable account label for daily use. Include platform, purpose, or currency, such as HSBC Trade25 HKD."
   },
   account_type: {
     zh: "用于区分现金账户、融资账户、基金账户、银行现金等账户类型。",
@@ -751,12 +768,12 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "Other fees directly related to this transaction."
   },
   fx_rate: {
-    zh: "原币折算到基准货币 CNY 的汇率。",
-    en: "FX rate from original currency to base currency CNY."
+    zh: "原币折算到基准货币 CNY 的汇率。现金流可填写汇率自动计算基准金额，也可填写基准金额反算汇率。",
+    en: "FX rate from original currency to base currency CNY. Cashflows can calculate the base amount from the rate or derive the rate from the base amount."
   },
   base_currency_amount: {
-    zh: "折算为 CNY 后的金额，用于净值、现金和风控计算。",
-    en: "Amount converted to CNY for NAV, cash, and risk calculations."
+    zh: "折算为 CNY 后的金额，用于净值、现金和风控计算。现金流中可手动填写，系统会同步反算汇率。",
+    en: "Amount converted to CNY for NAV, cash, and risk calculations. In cashflows, it can be entered manually to recalculate the FX rate."
   },
   status: {
     zh: "记录当前状态。已结算交易不能直接修改，应通过更正记录修正。",
@@ -771,16 +788,16 @@ const fieldHelp: Record<string, { zh: string; en: string }> = {
     en: "If this record corrects a prior trade, enter the corrected transaction ID."
   },
   cashflow_date: {
-    zh: "现金流或公司行为发生日期。",
-    en: "Date when the cashflow or corporate action occurred."
+    zh: "现金实际发生或入账日期，用于账户现金余额、账户日历和日盈亏计算。",
+    en: "Actual occurrence or posting date, used for account cash balance, account calendar, and daily P&L."
   },
   cashflow_type: {
-    zh: "区分入金、出金、分红、利息、费用、拆股、配股或换汇等类型。",
-    en: "Classifies deposits, withdrawals, dividends, interest, fees, splits, rights issues, or FX."
+    zh: "选择现金变动类型：入金、出金、分红、利息、税费、管理费、融资利息或换汇。系统会据此判断方向、是否外部现金流、是否计入收益。",
+    en: "Select the cash movement type: deposit, withdrawal, dividend, interest, taxes, management fee, margin interest, or FX. The system derives direction, external-flow status, and income treatment."
   },
   amount: {
-    zh: "现金流原币金额。按正数填写，系统按现金流类型判断方向。",
-    en: "Cashflow amount in original currency. Enter a positive amount; the system derives direction from type."
+    zh: "现金流原币金额，统一按正数填写；出金、税费、管理费等流出方向由类型自动判断。",
+    en: "Cashflow amount in original currency. Always enter a positive amount; outflow direction for withdrawals, taxes, and fees is derived from type."
   },
   is_external: {
     zh: "系统根据类型判断是否为组合外部资金变动；入金和出金会从日盈亏中剔除。",

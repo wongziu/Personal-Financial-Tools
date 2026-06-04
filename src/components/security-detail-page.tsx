@@ -52,12 +52,13 @@ export function SecurityDetailPage({ data }: { data: SecurityDetailData }) {
       <Card>
         <CardHeader>
           <CardTitle>{t.securityDetail}</CardTitle>
-          <CardDescription>{t.linkedAccount}: {data.account ? valueText(data.account.institution_name) : "N/A"}</CardDescription>
+          <CardDescription>{t.linkedAccount}: {data.account ? valueText(data.account.account_name) : "N/A"}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
           {[
             ["标的 ID", "Security ID", data.security.id],
-            ["关联账户", "Linked Account", data.account ? `${valueText(data.account.institution_name)} · ${valueText(data.account.id)}` : data.security.account_id],
+            ["关联账户", "Linked Account", data.account ? `${valueText(data.account.account_name)} · ${valueText(data.account.currency)}` : data.security.account_id],
+            ["机构名称", "Institution", data.account ? data.account.institution_name : "N/A"],
             ["交易代码", "Ticker", data.security.ticker],
             ["资产类型", "Asset Type", translateEnum(valueText(data.security.asset_type), language)],
             ["市场", "Market", translateEnum(valueText(data.security.market), language)],

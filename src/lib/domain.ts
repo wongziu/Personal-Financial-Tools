@@ -126,6 +126,7 @@ export interface RiskEvaluationResult {
 export interface AccountReference {
   id: string;
   institutionName: string;
+  accountName: string;
   includeInNetWorth: boolean;
   initialEntryDate: string;
 }
@@ -148,6 +149,7 @@ export interface AccountDailyPerformanceRow {
   computedNetAssetValueBase: number;
   netAssetValueBase: number;
   externalCashflowBase: number;
+  fxRevaluationPnlBase: number;
   dailyPnlBase: number;
   cumulativePnlBase: number;
   dailyReturn: number | null;

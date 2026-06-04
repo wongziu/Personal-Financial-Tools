@@ -13,7 +13,12 @@ import type {
 } from "@/lib/domain";
 import { calculateAccountDailyPerformance } from "@/lib/account-performance";
 import { generateBusinessId } from "@/lib/ids";
-import { calculateCashBalances, calculateHoldings, calculatePortfolioSnapshot } from "@/lib/portfolio";
+import {
+  calculateBaseCashValueFallbacks,
+  calculateCashBalances,
+  calculateHoldings,
+  calculatePortfolioSnapshot
+} from "@/lib/portfolio";
 import { evaluateTradeDecisionRisk } from "@/lib/risk";
 import { accountNavAnchorInputSchema, tradeDecisionInputSchema, type TradeDecisionInput } from "@/lib/validation";
 
@@ -25,6 +30,7 @@ export interface DashboardData {
   metrics: {
     portfolioNetValue: number;
     cashValueBase: number;
+    fxRevaluationBase: number;
     largestHoldingName: string;
     largestHoldingWeight: number;
     maxThemeName: string;
@@ -90,7 +96,20 @@ function selectSetting(database: DatabaseContext, key: string, fallback: string)
 }
 
 function latestMarketDate(database: DatabaseContext): string {
-  const row = database.sqlite.prepare("SELECT MAX(price_date) AS latest_date FROM market_prices").get() as { latest_date: string | null } | undefined;
+  const row = database.sqlite
+    .prepare(
+      `
+        SELECT MAX(latest_date) AS latest_date
+        FROM (
+          SELECT MAX(price_date) AS latest_date FROM market_prices
+          UNION ALL SELECT MAX(rate_date) AS latest_date FROM fx_rates
+          UNION ALL SELECT MAX(cashflow_date) AS latest_date FROM cashflows
+          UNION ALL SELECT MAX(trade_date) AS latest_date FROM transactions
+          UNION ALL SELECT MAX(anchor_date) AS latest_date FROM account_nav_anchors
+        )
+      `
+    )
+    .get() as { latest_date: string | null } | undefined;
   return row?.latest_date ?? new Date().toISOString().slice(0, 10);
 }
 
@@ -119,6 +138,7 @@ function accountRows(database: DatabaseContext): AccountCalendarAccount[] {
   return selectAll(database, "accounts").map((row) => ({
     id: String(row.id),
     institutionName: String(row.institution_name),
+    accountName: String(row.account_name || row.institution_name),
     market: String(row.market),
     currency: row.currency as Currency,
     includeInNetWorth: toBoolean(row.include_in_net_worth),
@@ -178,7 +198,7 @@ export function getPriceEntrySecurities(database: DatabaseContext): PriceEntrySe
           securities.currency,
           securities.market,
           securities.account_id AS accountId,
-          accounts.institution_name AS accountName,
+          accounts.account_name AS accountName,
           securities.investment_status AS investmentStatus
         FROM securities
         INNER JOIN accounts ON accounts.id = securities.account_id
@@ -361,12 +381,17 @@ export function getDashboardData(database: DatabaseContext): DashboardData {
   const asOfDate = latestMarketDate(database);
   const securities = selectAll(database, "securities");
   const securityNameById = new Map(securities.map((security) => [String(security.id), String(security.name)]));
-  const holdings = calculateHoldings(transactionRows(database));
-  const cashBalances = calculateCashBalances(cashflowRows(database), transactionRows(database), baseCurrency);
+  const transactions = transactionRows(database);
+  const cashflows = cashflowRows(database);
+  const holdings = calculateHoldings(transactions);
+  const cashBalances = calculateCashBalances(cashflows, transactions, baseCurrency);
+  const cashValueBaseFallbacks = calculateBaseCashValueFallbacks(cashflows, transactions, baseCurrency);
+  const historicalCashValueBase = [...cashValueBaseFallbacks.values()].reduce((sum, value) => sum + value, 0);
   const snapshot = calculatePortfolioSnapshot({
     asOfDate,
     holdings,
     cashBalances,
+    cashValueBaseFallbacks,
     prices: priceRows(database),
     fxRates: fxRows(database),
     securities: securityReferences(database),
@@ -389,6 +414,7 @@ export function getDashboardData(database: DatabaseContext): DashboardData {
     metrics: {
       portfolioNetValue: snapshot.portfolioNetValue,
       cashValueBase: snapshot.cashValueBase,
+      fxRevaluationBase: snapshot.cashValueBase - historicalCashValueBase,
       largestHoldingName: largestPosition ? (securityNameById.get(largestPosition.securityId) ?? largestPosition.securityId) : "N/A",
       largestHoldingWeight: largestPosition?.weight ?? 0,
       maxThemeName: maxTheme?.[0] ?? "N/A",
