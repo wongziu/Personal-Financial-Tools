@@ -504,6 +504,22 @@ const uiHelp: Record<string, { zh: string; en: string }> = {
     zh: "保存后会新增一条汇率记录，并刷新当前汇率列表。",
     en: "Saving creates a new FX rate record and refreshes the current list."
   },
+  "sourceIntelligence.panel": {
+    zh: "把外部资料先整理成结构化信息来源草稿。该草稿后续可复用到投资论点、复核事件和交易决策。",
+    en: "Turn external material into a structured information-source draft that can later be reused by theses, review events, and trade decisions."
+  },
+  "sourceIntelligence.security": {
+    zh: "选择这条信息主要关联的库内标的。生成草稿后会带入信息来源表单。",
+    en: "Choose the security this information primarily relates to. The draft carries it into the source form."
+  },
+  "sourceIntelligence.url": {
+    zh: "原始公开链接。系统会用域名推断来源名称；模型配置可用后会作为提示上下文。",
+    en: "Original public URL. The system infers the source name from the domain and passes it as model context when configured."
+  },
+  "sourceIntelligence.text": {
+    zh: "粘贴公告、新闻、研报摘要或其他材料正文。没有模型密钥时会生成本地规则草稿。",
+    en: "Paste filing, news, research summary, or other source text. Without a model key, the system creates a local rule-based draft."
+  },
   "prices.queue": {
     zh: "价格表以日期和标的为维度。创建标的并关联纳入净值账户后，只要标的可投资且当日缺少价格，就会出现在这里。",
     en: "Prices are keyed by date and security. Once a security is linked to an included account, investable names without a same-day price appear here."

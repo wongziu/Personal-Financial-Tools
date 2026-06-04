@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
+import { defaultSystemSettingRows } from "@/lib/app-settings";
 import { schema } from "@/lib/db/schema";
 
 export interface DatabaseContext {
@@ -288,6 +289,11 @@ export function initializeDatabase(sqlite: Database.Database): void {
       UNIQUE(account_id, anchor_date)
     );
   `);
+
+  const insertSetting = sqlite.prepare("INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)");
+  for (const setting of defaultSystemSettingRows) {
+    insertSetting.run(setting.key, setting.value);
+  }
 
   const accountColumns = sqlite.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>;
   if (!accountColumns.some((column) => column.name === "account_name")) {

@@ -1,4 +1,5 @@
 import type { DatabaseContext } from "@/lib/db/client";
+import { defaultSystemSettingRows } from "@/lib/app-settings";
 
 const naturalKeys: Record<string, string[]> = {
   market_prices: ["price_date", "security_id"],
@@ -38,10 +39,7 @@ function insertMany(database: DatabaseContext, table: string, rows: Array<Record
 }
 
 export function seedDemoData(database: DatabaseContext): void {
-  insertMany(database, "system_settings", [
-    { key: "baseCurrency", value: "CNY" },
-    { key: "uiLanguage", value: "zh-CN" }
-  ]);
+  insertMany(database, "system_settings", defaultSystemSettingRows);
 
   insertMany(database, "risk_rules", [
     { code: "single_active_stock_regular_limit", label: "Single active stock regular limit", threshold: 0.05, severity: "Warning", enabled: 1 },

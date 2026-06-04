@@ -1,24 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import {
-  AlertTriangleIcon,
-  BanknoteIcon,
-  BarChart3Icon,
-  CalendarDaysIcon,
   BookOpenIcon,
-  CalendarClockIcon,
   DatabaseIcon,
-  DownloadIcon,
-  FileTextIcon,
   GaugeIcon,
-  GlobeIcon,
   LandmarkIcon,
-  LineChartIcon,
-  ReceiptTextIcon,
+  GlobeIcon,
   ShieldAlertIcon
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AppSettingsDialog } from "@/components/app-settings-dialog";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLanguage } from "@/components/language-provider";
@@ -29,26 +22,46 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", labelZh: "仪表盘", labelEn: "Dashboard", icon: GaugeIcon },
-  { href: "/accounts", labelZh: "账户", labelEn: "Accounts", icon: LandmarkIcon },
-  { href: "/account-calendar", labelZh: "账户日历", labelEn: "Account Calendar", icon: CalendarDaysIcon },
-  { href: "/securities", labelZh: "标的", labelEn: "Securities", icon: DatabaseIcon },
-  { href: "/transactions", labelZh: "交易流水", labelEn: "Transactions", icon: ReceiptTextIcon },
-  { href: "/cashflows", labelZh: "现金流", labelEn: "Cashflows", icon: BanknoteIcon },
-  { href: "/prices", labelZh: "价格", labelEn: "Prices", icon: LineChartIcon },
-  { href: "/fx-rates", labelZh: "汇率", labelEn: "FX Rates", icon: GlobeIcon },
-  { href: "/sources", labelZh: "信息来源", labelEn: "Sources", icon: FileTextIcon },
-  { href: "/theses", labelZh: "投资论点", labelEn: "Theses", icon: BookOpenIcon },
-  { href: "/review-events", labelZh: "复核日历", labelEn: "Review Events", icon: CalendarClockIcon },
-  { href: "/trade-decisions", labelZh: "交易决策", labelEn: "Trade Decisions", icon: BarChart3Icon },
-  { href: "/risk-rules", labelZh: "风险规则", labelEn: "Risk Rules", icon: ShieldAlertIcon },
-  { href: "/exceptions", labelZh: "例外/违规", labelEn: "Exceptions", icon: AlertTriangleIcon },
-  { href: "/export", labelZh: "导出", labelEn: "Export", icon: DownloadIcon }
+  { href: "/portfolio", labelZh: "资产工作台", labelEn: "Portfolio Workspace", icon: LandmarkIcon },
+  { href: "/ledger", labelZh: "流水与行情", labelEn: "Ledger & Market Data", icon: DatabaseIcon },
+  { href: "/research", labelZh: "研究工作台", labelEn: "Research Workspace", icon: BookOpenIcon },
+  { href: "/governance", labelZh: "风控与导出", labelEn: "Governance & Export", icon: ShieldAlertIcon }
 ];
+
+const legacyRouteGroups: Record<string, string> = {
+  "/accounts": "/portfolio",
+  "/account-calendar": "/portfolio",
+  "/securities": "/portfolio",
+  "/transactions": "/ledger",
+  "/cashflows": "/ledger",
+  "/prices": "/ledger",
+  "/fx-rates": "/ledger",
+  "/sources": "/research",
+  "/theses": "/research",
+  "/review-events": "/research",
+  "/trade-decisions": "/research",
+  "/risk-rules": "/governance",
+  "/exceptions": "/governance",
+  "/export": "/governance"
+};
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { language, setLanguage, t } = useLanguage();
   const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
+  const activePath = legacyRouteGroups[pathname] ?? pathname;
+
+  useEffect(() => {
+    if (window.sessionStorage.getItem("investment-system-fx-auto-refresh") === "1") {
+      return;
+    }
+    window.sessionStorage.setItem("investment-system-fx-auto-refresh", "1");
+    fetch("/api/fx-refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "auto" })
+    }).catch(() => undefined);
+  }, []);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -62,7 +75,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Separator />
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
           {navItems.map((item) => {
-            const active = pathname === item.href;
+            const active = activePath === item.href;
             const Icon = item.icon;
             return (
               <Link
@@ -104,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <HelpTooltip content={translateUiHelp("app.language", language)} label={t.language} />
             </div>
             <ThemeToggle />
+            <AppSettingsDialog />
           </div>
         </header>
         <main className="p-4 md:p-6">{children}</main>

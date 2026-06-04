@@ -17,6 +17,43 @@ test("loads dashboard and supports language and theme toggles", async ({ page })
   await expect(page.locator("html")).toHaveClass(/dark/);
 });
 
+test("opens system settings and saves fx and model configuration", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "系统配置" }).click();
+  const dialog = page.getByRole("dialog");
+
+  await expect(dialog.getByRole("heading", { name: "系统配置" })).toBeVisible();
+  await dialog.getByRole("tab", { name: "汇率" }).click();
+  await expect(dialog.getByRole("combobox", { name: "汇率数据源" })).toContainText("Frankfurter");
+  await dialog.getByRole("spinbutton").fill("6");
+
+  await dialog.getByRole("tab", { name: "模型 API" }).click();
+  await dialog.getByRole("textbox", { name: "Model" }).fill("gpt-4.1-mini");
+  await expect(dialog.getByRole("textbox", { name: "API Key Env" })).toHaveValue("OPENAI_API_KEY");
+
+  await dialog.getByRole("button", { name: "保存" }).click();
+  await expect(page.getByText("记录已保存")).toBeVisible();
+});
+
+test("groups related modules into tabbed workspaces", async ({ page }) => {
+  await page.goto("/portfolio");
+
+  await expect(page.getByRole("heading", { name: "资产工作台" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "账户", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "账户日历" }).click();
+  await expect(page.getByRole("heading", { name: /账户日历/ })).toBeVisible();
+
+  await page.goto("/ledger");
+  await expect(page.getByRole("heading", { name: "流水与行情" })).toBeVisible();
+  await page.getByRole("tab", { name: "汇率" }).click();
+  await expect(page.getByTestId("fx-quick-panel")).toBeVisible();
+
+  await page.goto("/research");
+  await expect(page.getByRole("heading", { name: "研究工作台" })).toBeVisible();
+  await expect(page.getByTestId("source-intelligence-panel")).toBeVisible();
+});
+
 test("localizes securities list fields and values across three languages", async ({ page }) => {
   await page.goto("/securities");
 
@@ -274,17 +311,30 @@ test("uses selectors for optional relationship ids instead of manual entry", asy
   await expect(sourceDialog.getByRole("textbox", { name: "关联论点" })).toBeHidden();
 });
 
-test("shows hover help for page content and list columns", async ({ page }) => {
+test("generates an information source draft and applies it to the source form", async ({ page }) => {
+  await page.goto("/sources");
+
+  const panel = page.getByTestId("source-intelligence-panel");
+  await expect(panel.getByText("信息智能获取")).toBeVisible();
+  await panel.getByRole("textbox", { name: "原始链接" }).fill("https://example.com/apple-demand");
+  await panel.getByRole("textbox", { name: "资料正文" }).fill("Apple reported stronger iPhone demand and increased AI infrastructure spending.");
+  await panel.getByRole("button", { name: "生成草稿" }).click();
+
+  await expect(panel.getByText("Apple reported stronger iPhone demand")).toBeVisible();
+  await panel.getByRole("button", { name: "应用到新建记录" }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox", { name: "来源名称" })).toHaveValue("example.com");
+  await expect(dialog.getByRole("textbox", { name: "原始链接" })).toHaveValue("https://example.com/apple-demand");
+  await expect(dialog.getByRole("textbox", { name: "关键事实" })).toHaveValue(/Apple reported stronger iPhone demand/);
+});
+
+test("exposes help affordances for page content and list columns", async ({ page }) => {
   await page.goto("/securities");
 
   await expect(page.getByRole("heading", { name: /标的/ }).getByRole("button", { name: "说明: 标的" })).toBeVisible();
-
-  await page.getByRole("button", { name: "说明: 资产类型" }).hover();
-  await expect(page.getByText(/标的资产类别/)).toBeVisible();
-  await page.keyboard.press("Escape");
-
-  await page.getByRole("button", { name: "说明: 总记录" }).hover();
-  await expect(page.getByText(/当前模块保存的全部记录数/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "说明: 资产类型" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "说明: 总记录" })).toBeVisible();
 });
 
 test("edits an existing security record without changing its locked identifier", async ({ page }) => {

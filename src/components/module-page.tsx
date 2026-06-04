@@ -12,6 +12,7 @@ import { FxQuickPanel } from "@/components/fx-quick-panel";
 import { FieldLabel, HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
 import { PriceQuickPanel } from "@/components/price-quick-panel";
+import { SourceIntelligencePanel } from "@/components/source-intelligence-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +34,7 @@ import {
   type Language
 } from "@/lib/i18n";
 import { assetTypeRequiresLockup, deriveLiquidityLevel } from "@/lib/security-liquidity";
+import type { SourceDraftFields } from "@/lib/source-intelligence";
 import {
   buildCalendarMonth,
   filterRowsByDate,
@@ -990,6 +992,27 @@ export function ModulePage({
     });
   };
 
+  const applySourceDraft = (draft: SourceDraftFields & { securityId?: string }) => {
+    const next = syncDerivedFormValues(definition.id, {
+      ...initialFormValues(definition),
+      informationDate: draft.informationDate,
+      obtainedDate: draft.obtainedDate,
+      securityId: draft.securityId ?? "",
+      informationType: draft.informationType,
+      evidenceLevel: draft.evidenceLevel,
+      sourceName: draft.sourceName,
+      sourceUrl: draft.sourceUrl,
+      keyFacts: draft.keyFacts,
+      thesisImpact: draft.thesisImpact,
+      triggersReview: draft.triggersReview,
+      enteredBy: "Owner",
+      enteredDate: draft.obtainedDate
+    }, referenceOptions);
+    setEditingRow(undefined);
+    setFormValues(next);
+    setOpen(true);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -1025,6 +1048,9 @@ export function ModulePage({
 
       {definition.id === "fx-rates" ? <FxQuickPanel rows={rows} /> : null}
       {definition.id === "prices" ? <PriceQuickPanel rows={rows} securities={priceEntrySecurities} /> : null}
+      {definition.id === "sources" ? (
+        <SourceIntelligencePanel securities={referenceOptions.securityId ?? []} onApplyDraft={applySourceDraft} />
+      ) : null}
 
       <div className={`grid gap-3 md:grid-cols-2 ${selectedDateColumn ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
         <Card className="border-border/70">
