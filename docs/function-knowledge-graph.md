@@ -129,11 +129,20 @@ flowchart LR
   Sources --> TradeDecisionSources["trade_decision_sources"]
   TradeDecisionSources --> TradeDecisions
   TradeDecisions --> ReviewEvents["review_events"]
-  Sources --> ResearchAi["AI 研究分析"]
-  Theses --> ResearchAi
-  ReviewEvents --> ResearchAi
-  TradeDecisions --> ResearchAi
-  Securities --> ResearchAi
+  Sources --> ContextSnapshot["研究上下文快照"]
+  Theses --> ContextSnapshot
+  ReviewEvents --> ContextSnapshot
+  TradeDecisions --> ContextSnapshot
+  Securities --> ContextSnapshot
+  ContextSnapshot --> AnalysisMode{"分析模式"}
+  AnalysisMode --> Brief["研究简报"]
+  AnalysisMode --> EvidenceAudit["证据审计"]
+  AnalysisMode --> RiskCatalyst["风险催化"]
+  AnalysisMode --> DecisionMemo["决策备忘"]
+  Brief --> ResearchAi["AI 研究分析"]
+  EvidenceAudit --> ResearchAi
+  RiskCatalyst --> ResearchAi
+  DecisionMemo --> ResearchAi
   ModelConfig["模型执行配置"] --> ResearchAi
 ```
 
@@ -142,7 +151,7 @@ flowchart LR
 - 来源智能只生成可审查草稿，不直接保存记录。
 - 草稿可复用到信息来源、论点、交易决策、复核事件，但当前直接落地入口是信息来源表单。
 - 交易决策表单引用已有标的、论点、信息来源，避免手填孤立 ID。
-- AI 研究分析基于本地记录调用已配置模型生成结构化摘要、证据要点、论点影响、风险标记和下一步动作。
+- AI 研究分析先汇总来源、论点、复核事件、交易决策覆盖度，再按研究简报、证据审计、风险催化、决策备忘四种模式调用已配置模型。
 
 ### 风控与治理层
 
@@ -188,7 +197,7 @@ flowchart LR
 | 投资论点 | 记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
 | 复核日历 | 管理财报、复核、风险事件和后续行动 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `review_events` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
 | 交易决策 | 记录交易前理由、仓位、风险、证据来源和最终决策 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx`, `src/app/api/trade-decisions/route.ts` | `trade_decisions`, `trade_decision_sources` | `src/components/trade-decisions-page.tsx`, `src/lib/services.ts#createTradeDecisionWithRisk`, `src/lib/validation.ts` | `src/lib/db.integration.test.ts`, `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
-| AI 研究 | 基于本地研究记录调用模型生成结构化分析 | `src/app/research/page.tsx`, `src/app/api/research-ai/route.ts` | `securities`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/components/research-ai-panel.tsx`, `src/lib/research-ai.ts`, `src/lib/model-client.ts` | `src/lib/research-ai.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
+| AI 研究 | 基于本地研究记录生成上下文快照，并按研究简报、证据审计、风险催化、决策备忘调用模型 | `src/app/research/page.tsx`, `src/app/api/research-ai/route.ts` | `securities`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/components/research-ai-panel.tsx`, `src/lib/research-ai.ts`, `src/lib/model-client.ts` | `src/lib/research-ai.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
 | 风险规则 | 维护交易决策校验使用的阈值和级别 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `risk_rules` | `src/lib/modules.ts`, `src/lib/risk.ts` | `src/lib/finance.test.ts`, `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 例外/违规 | 记录事前例外、事后违规、数据错误、流程遗漏 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `exceptions` | `src/lib/modules.ts`, `src/lib/services.ts#createTradeDecisionWithRisk` | `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 导出 | 导出 V1 核心模块 Excel workbook | `src/app/governance/page.tsx`, `src/app/export/page.tsx`, `src/app/api/export/route.ts` | 多核心表 | `src/lib/export.ts`, `src/lib/services.ts#listAllExportData`, `src/components/export-page.tsx` | `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |

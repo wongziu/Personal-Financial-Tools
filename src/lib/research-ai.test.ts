@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { defaultAppSettings } from "@/lib/app-settings";
-import { analyzeResearchWithAi, buildResearchAnalysisPrompt, type ResearchAiDataset } from "@/lib/research-ai";
+import { analyzeResearchWithAi, buildResearchAnalysisPrompt, buildResearchContextSnapshot, type ResearchAiDataset } from "@/lib/research-ai";
 
 const dataset: ResearchAiDataset = {
   securities: [
@@ -39,7 +39,8 @@ describe("research AI", () => {
     const prompt = buildResearchAnalysisPrompt({
       dataset,
       securityId: "SEC-US-AAPL",
-      question: "Should I add exposure before earnings?"
+      question: "Should I add exposure before earnings?",
+      analysisMode: "risk-catalyst"
     });
 
     expect(prompt).toContain("Apple Inc.");
@@ -48,7 +49,25 @@ describe("research AI", () => {
     expect(prompt).toContain("Earnings");
     expect(prompt).toContain("DEC-2026-001");
     expect(prompt).toContain("Should I add exposure before earnings?");
+    expect(prompt).toContain("Analysis mode: risk-catalyst");
+    expect(prompt).toContain("Context coverage:");
     expect(prompt).toContain("strict JSON");
+  });
+
+  test("summarizes selected security research coverage for the workbench", () => {
+    const context = buildResearchContextSnapshot(dataset, "SEC-US-AAPL");
+
+    expect(context).toMatchObject({
+      securityName: "Apple Inc.",
+      securityTicker: "AAPL",
+      sourceCount: 1,
+      thesisCount: 1,
+      reviewEventCount: 1,
+      tradeDecisionCount: 1,
+      latestSourceDate: "2026-06-01",
+      nextReviewDate: "2026-07-25",
+      latestDecisionAction: "Execute"
+    });
   });
 
   test("uses the configured model to return structured research analysis", async () => {
@@ -83,13 +102,15 @@ describe("research AI", () => {
       dataset,
       securityId: "SEC-US-AAPL",
       question: "Should I add exposure before earnings?",
+      analysisMode: "decision-memo",
       fetcher
     });
 
     expect(result.mode).toBe("model");
+    expect(result.analysisMode).toBe("decision-memo");
+    expect(result.context.sourceCount).toBe(1);
     expect(result.analysis.summary).toContain("supportive evidence");
     expect(result.analysis.evidenceHighlights).toHaveLength(1);
     expect(result.analysis.nextActions[0]).toContain("Review earnings");
   });
 });
-

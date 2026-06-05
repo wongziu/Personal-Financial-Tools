@@ -99,8 +99,20 @@ test("runs an AI research analysis from the research workspace", async ({ page }
       body: JSON.stringify({
         result: {
           mode: "model",
+          analysisMode: "risk-catalyst",
           model: "openai:test-model@default",
           securityId: "SEC-US-AAPL",
+          context: {
+            securityName: "Apple Inc.",
+            securityTicker: "AAPL",
+            sourceCount: 2,
+            thesisCount: 1,
+            reviewEventCount: 1,
+            tradeDecisionCount: 1,
+            latestSourceDate: "2026-06-01",
+            nextReviewDate: "2026-07-25",
+            latestDecisionAction: "Execute"
+          },
           prompt: "mock prompt",
           analysis: {
             summary: "Apple evidence is supportive, but earnings risk remains.",
@@ -120,10 +132,14 @@ test("runs an AI research analysis from the research workspace", async ({ page }
   const panel = page.getByTestId("research-ai-panel");
 
   await expect(panel.getByText("AI 研究分析")).toBeVisible();
+  await panel.getByRole("combobox", { name: "分析模式" }).click();
+  await page.getByRole("option", { name: "风险催化" }).click();
   await panel.getByRole("textbox", { name: "研究问题" }).fill("Should I add exposure before earnings?");
   await panel.getByRole("button", { name: "生成分析" }).click();
 
   await expect(panel.getByText("Apple evidence is supportive")).toBeVisible();
+  await expect(panel.getByTestId("research-ai-mode-badge")).toHaveText("风险催化");
+  await expect(panel.getByText("2026-07-25")).toBeVisible();
   await expect(panel.getByText("A-level filing supports demand.")).toBeVisible();
   await expect(panel.getByText("Review the next earnings event before adding exposure.")).toBeVisible();
 });

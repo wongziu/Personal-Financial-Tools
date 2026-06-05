@@ -11,6 +11,21 @@ export interface ResearchAiDataset {
   tradeDecisions: Row[];
 }
 
+export const researchAnalysisModes = ["brief", "evidence-audit", "risk-catalyst", "decision-memo"] as const;
+export type ResearchAnalysisMode = typeof researchAnalysisModes[number];
+
+export interface ResearchContextSnapshot {
+  securityName: string;
+  securityTicker: string;
+  sourceCount: number;
+  thesisCount: number;
+  reviewEventCount: number;
+  tradeDecisionCount: number;
+  latestSourceDate: string | null;
+  nextReviewDate: string | null;
+  latestDecisionAction: string | null;
+}
+
 export interface ResearchAnalysis {
   summary: string;
   evidenceHighlights: string[];
@@ -22,8 +37,10 @@ export interface ResearchAnalysis {
 
 export interface ResearchAiResult {
   mode: "model";
+  analysisMode: ResearchAnalysisMode;
   model: string;
   securityId: string;
+  context: ResearchContextSnapshot;
   prompt: string;
   analysis: ResearchAnalysis;
 }
@@ -74,28 +91,81 @@ function analysisFromJson(value: Record<string, unknown>): ResearchAnalysis {
   };
 }
 
-export function buildResearchAnalysisPrompt({
-  dataset,
-  securityId,
-  question
-}: {
-  dataset: ResearchAiDataset;
-  securityId: string;
-  question: string;
-}): string {
-  const security = dataset.securities.find((row) => String(row.id) === securityId);
+function securityRows(dataset: ResearchAiDataset, securityId: string) {
   const sources = dataset.sources.filter((row) => String(row.security_id ?? "") === securityId);
   const theses = dataset.theses.filter((row) => String(row.security_id ?? "") === securityId);
   const reviewEvents = dataset.reviewEvents.filter((row) => String(row.security_id ?? "") === securityId);
   const tradeDecisions = dataset.tradeDecisions.filter((row) => String(row.security_id ?? "") === securityId);
+
+  return {
+    security: dataset.securities.find((row) => String(row.id) === securityId),
+    sources,
+    theses,
+    reviewEvents,
+    tradeDecisions
+  };
+}
+
+function firstString(rows: Row[], column: string): string | null {
+  const value = rows.find((row) => row[column] !== null && row[column] !== undefined && row[column] !== "")?.[column];
+  return value === null || value === undefined || value === "" ? null : String(value);
+}
+
+export function buildResearchContextSnapshot(dataset: ResearchAiDataset, securityId: string): ResearchContextSnapshot {
+  const { security, sources, theses, reviewEvents, tradeDecisions } = securityRows(dataset, securityId);
+
+  return {
+    securityName: valueText(security?.name ?? securityId),
+    securityTicker: valueText(security?.ticker ?? ""),
+    sourceCount: sources.length,
+    thesisCount: theses.length,
+    reviewEventCount: reviewEvents.length,
+    tradeDecisionCount: tradeDecisions.length,
+    latestSourceDate: firstString(sources, "information_date"),
+    nextReviewDate: firstString(reviewEvents, "expected_date"),
+    latestDecisionAction: firstString(tradeDecisions, "final_decision") ?? firstString(tradeDecisions, "action")
+  };
+}
+
+function analysisModeInstruction(mode: ResearchAnalysisMode): string {
+  switch (mode) {
+    case "evidence-audit":
+      return "Focus on evidence quality, missing corroboration, source conflicts, and which claims need stronger support.";
+    case "risk-catalyst":
+      return "Focus on downside risks, catalysts, review triggers, scenario breaks, and variables to monitor before the next decision.";
+    case "decision-memo":
+      return "Focus on an investment committee style decision memo: what is known, what is uncertain, what action is justified, and what guardrails are needed.";
+    case "brief":
+    default:
+      return "Focus on a concise analyst briefing that connects evidence, thesis, risks, and next actions.";
+  }
+}
+
+export function buildResearchAnalysisPrompt({
+  dataset,
+  securityId,
+  question,
+  analysisMode = "brief"
+}: {
+  dataset: ResearchAiDataset;
+  securityId: string;
+  question: string;
+  analysisMode?: ResearchAnalysisMode;
+}): string {
+  const { security, sources, theses, reviewEvents, tradeDecisions } = securityRows(dataset, securityId);
+  const context = buildResearchContextSnapshot(dataset, securityId);
 
   return [
     "You are an AI research analyst for a local investment decision system.",
     "Use only the provided local records. Do not invent external facts.",
     "Return strict JSON with keys: summary, evidenceHighlights, thesisImpact, riskFlags, suggestedQuestions, nextActions.",
     "Keep every claim auditable and refer to source, thesis, event, or decision IDs when useful.",
+    `Analysis mode: ${analysisMode}. ${analysisModeInstruction(analysisMode)}`,
     "",
     `Question: ${question || "Summarize the current research state and next decisions."}`,
+    "",
+    "Context coverage:",
+    `sources=${context.sourceCount}; theses=${context.thesisCount}; reviewEvents=${context.reviewEventCount}; tradeDecisions=${context.tradeDecisionCount}; latestSourceDate=${valueText(context.latestSourceDate)}; nextReviewDate=${valueText(context.nextReviewDate)}; latestDecisionAction=${valueText(context.latestDecisionAction)}`,
     "",
     "Security:",
     security
@@ -121,15 +191,17 @@ export async function analyzeResearchWithAi({
   dataset,
   securityId,
   question,
+  analysisMode = "brief",
   fetcher
 }: {
   settings: AppSettings;
   dataset: ResearchAiDataset;
   securityId: string;
   question: string;
+  analysisMode?: ResearchAnalysisMode;
   fetcher?: typeof fetch;
 }): Promise<ResearchAiResult> {
-  const prompt = buildResearchAnalysisPrompt({ dataset, securityId, question });
+  const prompt = buildResearchAnalysisPrompt({ dataset, securityId, question, analysisMode });
   const messages: ModelChatMessage[] = [
     {
       role: "system",
@@ -146,8 +218,10 @@ export async function analyzeResearchWithAi({
 
   return {
     mode: "model",
+    analysisMode,
     model: result.model,
     securityId,
+    context: buildResearchContextSnapshot(dataset, securityId),
     prompt,
     analysis: analysisFromJson(parseJsonObjectFromModel(result.content))
   };

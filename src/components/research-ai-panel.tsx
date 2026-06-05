@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Language } from "@/lib/i18n";
 import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
-import type { ResearchAiResult } from "@/lib/research-ai";
+import type { ResearchAiResult, ResearchAnalysisMode } from "@/lib/research-ai";
 
 function localize(language: Language, zh: string, en: string): string {
   return language === "en-US" ? en : translateText(zh, language);
@@ -38,9 +38,26 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+const analysisModeLabels: Record<ResearchAnalysisMode, { zh: string; en: string }> = {
+  brief: { zh: "研究简报", en: "Research Brief" },
+  "evidence-audit": { zh: "证据审计", en: "Evidence Audit" },
+  "risk-catalyst": { zh: "风险催化", en: "Risk & Catalysts" },
+  "decision-memo": { zh: "决策备忘", en: "Decision Memo" }
+};
+
+function contextMetric(label: string, value: string | number | null) {
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium">{value ?? "N/A"}</div>
+    </div>
+  );
+}
+
 export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] }) {
   const { language, t } = useLanguage();
   const [securityId, setSecurityId] = useState(securities[0]?.value ?? "");
+  const [analysisMode, setAnalysisMode] = useState<ResearchAnalysisMode>("brief");
   const [question, setQuestion] = useState(localize(language, "总结当前研究状态，并给出下一步复核问题。", "Summarize the current research state and next review questions."));
   const [result, setResult] = useState<ResearchAiResult | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -50,7 +67,7 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
       const response = await fetch("/api/research-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ securityId, question })
+        body: JSON.stringify({ securityId, question, analysisMode })
       });
       const payload = (await response.json()) as { result?: ResearchAiResult; error?: string };
 
@@ -76,10 +93,30 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
             {localize(language, "基于本地信息来源、论点、复核事件和交易决策调用模型生成可审查分析。", "Use the configured model to analyze local sources, theses, review events, and trade decisions.")}
           </CardDescription>
         </div>
-        {result ? <Badge variant="secondary">{result.model}</Badge> : null}
+        {result ? (
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary" data-testid="research-ai-mode-badge">{localize(language, analysisModeLabels[result.analysisMode].zh, analysisModeLabels[result.analysisMode].en)}</Badge>
+            <Badge variant="outline">{result.model}</Badge>
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="grid gap-3">
-        <div className="grid gap-3 md:grid-cols-[260px_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[220px_220px_1fr_auto] md:items-end">
+          <div className="grid gap-1.5">
+            <FieldLabel label={localize(language, "分析模式", "Analysis Mode")} help="" />
+            <Select value={analysisMode} onValueChange={(value) => setAnalysisMode(value as ResearchAnalysisMode)}>
+              <SelectTrigger aria-label={localize(language, "分析模式", "Analysis Mode")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(analysisModeLabels) as ResearchAnalysisMode[]).map((mode) => (
+                  <SelectItem key={mode} value={mode}>
+                    {localize(language, analysisModeLabels[mode].zh, analysisModeLabels[mode].en)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "分析标的", "Security")} help="" />
             <Select value={securityId} onValueChange={setSecurityId}>
@@ -112,6 +149,16 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
 
         {result ? (
           <div className="grid gap-3 rounded-md border bg-background p-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {contextMetric(localize(language, "信息来源", "Sources"), result.context.sourceCount)}
+              {contextMetric(localize(language, "投资论点", "Theses"), result.context.thesisCount)}
+              {contextMetric(localize(language, "复核事件", "Review Events"), result.context.reviewEventCount)}
+              {contextMetric(localize(language, "交易决策", "Trade Decisions"), result.context.tradeDecisionCount)}
+              {contextMetric(localize(language, "最新信息日期", "Latest Source Date"), result.context.latestSourceDate)}
+              {contextMetric(localize(language, "下一复核日期", "Next Review Date"), result.context.nextReviewDate)}
+              {contextMetric(localize(language, "最近决策", "Latest Decision"), result.context.latestDecisionAction)}
+              {contextMetric(localize(language, "分析标的", "Security"), [result.context.securityName, result.context.securityTicker].filter(Boolean).join(" · "))}
+            </div>
             <div>
               <div className="text-xs font-medium text-muted-foreground">{localize(language, "摘要", "Summary")}</div>
               <div className="text-sm">{result.analysis.summary}</div>
