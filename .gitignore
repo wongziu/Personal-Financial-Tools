@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+tsconfig.tsbuildinfo
+data/*.sqlite
+data/*.sqlite-*
+.env*
+.superpowers/
+*.log

@@ -1,0 +1,173 @@
+import type { AppSettings } from "@/lib/app-settings";
+
+export interface SourceIntelligenceInput {
+  settings: AppSettings;
+  sourceText: string;
+  sourceUrl?: string;
+  securityName?: string;
+  today?: string;
+  fetcher?: typeof fetch;
+}
+
+export interface SourceDraftFields {
+  informationDate: string;
+  obtainedDate: string;
+  sourceName: string;
+  sourceUrl: string;
+  informationType: string;
+  evidenceLevel: string;
+  keyFacts: string;
+  thesisImpact: string;
+  triggersReview: boolean;
+}
+
+export interface SourceIntelligenceDraft {
+  mode: "model" | "local";
+  fields: SourceDraftFields;
+  reuseTargets: string[];
+  prompt: string;
+  notes: string;
+}
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function sourceNameFromUrl(sourceUrl: string | undefined): string {
+  if (!sourceUrl) {
+    return "Manual intelligence input";
+  }
+
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return sourceUrl.slice(0, 80);
+  }
+}
+
+function compactFactText(sourceText: string): string {
+  const trimmed = sourceText.replace(/\s+/g, " ").trim();
+  if (!trimmed) {
+    return "No source text provided. Please review the original source manually.";
+  }
+
+  const sentence = trimmed.split(/(?<=[.!?。！？])\s+/)[0] ?? trimmed;
+  return sentence.slice(0, 600);
+}
+
+function inferReviewTrigger(sourceText: string): boolean {
+  return /risk|warning|profit|loss|guidance|demand|spending|capex|监管|风险|盈利|亏损|指引|需求|资本开支/i.test(sourceText);
+}
+
+export function buildInformationExtractionPrompt(input: {
+  sourceText: string;
+  sourceUrl?: string;
+  securityName?: string;
+}): string {
+  return [
+    "You are extracting structured investment information for a local trading decision system.",
+    "The output will be reused by related thesis and trade-decision workflows, so keep every field auditable.",
+    `securityName: ${input.securityName || "Unknown"}`,
+    `sourceUrl: ${input.sourceUrl || "N/A"}`,
+    "Return strict JSON with keys: informationDate, sourceName, informationType, evidenceLevel, keyFacts, thesisImpact, triggersReview, reviewReason.",
+    "Evidence levels: A=primary filing or official disclosure, B=credible data/provider, C=media or analyst summary, D=unverified/social.",
+    "Thesis impact values: Support, Weaken, Irrelevant, Pending.",
+    "Source text:",
+    input.sourceText.slice(0, 8000)
+  ].join("\n");
+}
+
+function localDraft(input: SourceIntelligenceInput, prompt: string): SourceIntelligenceDraft {
+  const today = input.today ?? todayKey();
+  return {
+    mode: "local",
+    fields: {
+      informationDate: today,
+      obtainedDate: today,
+      sourceName: sourceNameFromUrl(input.sourceUrl),
+      sourceUrl: input.sourceUrl ?? "",
+      informationType: "Media",
+      evidenceLevel: "C",
+      keyFacts: compactFactText(input.sourceText),
+      thesisImpact: "Pending",
+      triggersReview: inferReviewTrigger(input.sourceText)
+    },
+    reuseTargets: input.settings.sourceIntelligence.reuseTargets,
+    prompt,
+    notes: "Model execution is not configured or no API key was found; generated a local deterministic draft."
+  };
+}
+
+function apiKeyFromSettings(settings: AppSettings): string | undefined {
+  if (settings.modelApi.apiKeyMode !== "env") {
+    return undefined;
+  }
+
+  return process.env[settings.modelApi.apiKeyEnvVar];
+}
+
+function parseModelJson(value: unknown): Partial<SourceDraftFields> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return value as Partial<SourceDraftFields>;
+}
+
+async function modelDraft(input: SourceIntelligenceInput, prompt: string, apiKey: string): Promise<SourceIntelligenceDraft> {
+  const fetcher = input.fetcher ?? fetch;
+  const response = await fetcher(`${input.settings.modelApi.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: input.settings.modelApi.model,
+      temperature: input.settings.modelApi.temperature,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: input.settings.sourceIntelligence.extractionPrompt },
+        { role: "user", content: prompt }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Model source extraction failed: ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content ?? "{}";
+  const parsed = parseModelJson(JSON.parse(content));
+  const fallback = localDraft(input, prompt);
+
+  return {
+    mode: "model",
+    fields: {
+      ...fallback.fields,
+      ...parsed,
+      obtainedDate: fallback.fields.obtainedDate
+    },
+    reuseTargets: input.settings.sourceIntelligence.reuseTargets,
+    prompt,
+    notes: "Draft generated by configured model API. Review before saving it as an information source."
+  };
+}
+
+export async function draftInformationSource(input: SourceIntelligenceInput): Promise<SourceIntelligenceDraft> {
+  const prompt = buildInformationExtractionPrompt(input);
+  const apiKey = apiKeyFromSettings(input.settings);
+
+  if (!input.settings.sourceIntelligence.enabled || input.settings.modelApi.provider === "disabled" || !apiKey) {
+    return localDraft(input, prompt);
+  }
+
+  try {
+    return await modelDraft(input, prompt, apiKey);
+  } catch {
+    return localDraft(input, prompt);
+  }
+}
