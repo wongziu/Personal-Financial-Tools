@@ -42,6 +42,7 @@ flowchart LR
   ResearchWs --> Theses["投资论点"]
   ResearchWs --> ReviewEvents["复核日历"]
   ResearchWs --> TradeDecisions["交易决策"]
+  ResearchWs --> ResearchAi["AI 研究"]
   GovernanceWs --> RiskRules["风险规则"]
   GovernanceWs --> Exceptions["例外/违规"]
   GovernanceWs --> Export["导出"]
@@ -128,6 +129,12 @@ flowchart LR
   Sources --> TradeDecisionSources["trade_decision_sources"]
   TradeDecisionSources --> TradeDecisions
   TradeDecisions --> ReviewEvents["review_events"]
+  Sources --> ResearchAi["AI 研究分析"]
+  Theses --> ResearchAi
+  ReviewEvents --> ResearchAi
+  TradeDecisions --> ResearchAi
+  Securities --> ResearchAi
+  ModelConfig["模型执行配置"] --> ResearchAi
 ```
 
 当前边界：
@@ -135,6 +142,7 @@ flowchart LR
 - 来源智能只生成可审查草稿，不直接保存记录。
 - 草稿可复用到信息来源、论点、交易决策、复核事件，但当前直接落地入口是信息来源表单。
 - 交易决策表单引用已有标的、论点、信息来源，避免手填孤立 ID。
+- AI 研究分析基于本地记录调用已配置模型生成结构化摘要、证据要点、论点影响、风险标记和下一步动作。
 
 ### 风控与治理层
 
@@ -180,10 +188,11 @@ flowchart LR
 | 投资论点 | 记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
 | 复核日历 | 管理财报、复核、风险事件和后续行动 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `review_events` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
 | 交易决策 | 记录交易前理由、仓位、风险、证据来源和最终决策 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx`, `src/app/api/trade-decisions/route.ts` | `trade_decisions`, `trade_decision_sources` | `src/components/trade-decisions-page.tsx`, `src/lib/services.ts#createTradeDecisionWithRisk`, `src/lib/validation.ts` | `src/lib/db.integration.test.ts`, `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
+| AI 研究 | 基于本地研究记录调用模型生成结构化分析 | `src/app/research/page.tsx`, `src/app/api/research-ai/route.ts` | `securities`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/components/research-ai-panel.tsx`, `src/lib/research-ai.ts`, `src/lib/model-client.ts` | `src/lib/research-ai.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
 | 风险规则 | 维护交易决策校验使用的阈值和级别 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `risk_rules` | `src/lib/modules.ts`, `src/lib/risk.ts` | `src/lib/finance.test.ts`, `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 例外/违规 | 记录事前例外、事后违规、数据错误、流程遗漏 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `exceptions` | `src/lib/modules.ts`, `src/lib/services.ts#createTradeDecisionWithRisk` | `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 导出 | 导出 V1 核心模块 Excel workbook | `src/app/governance/page.tsx`, `src/app/export/page.tsx`, `src/app/api/export/route.ts` | 多核心表 | `src/lib/export.ts`, `src/lib/services.ts#listAllExportData`, `src/components/export-page.tsx` | `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
-| 系统设置 | 管理基准货币、语言、FX、颜色、模型 API、来源智能配置 | `src/app/api/settings/route.ts` | `system_settings` | `src/lib/app-settings.ts`, `src/components/app-settings-dialog.tsx`, `src/components/app-settings-provider.tsx` | `src/lib/settings.test.ts`, `tests/e2e/core.spec.ts` |
+| 系统设置 | 管理基准货币、语言、FX、颜色、模型执行模式、OpenAI-compatible API、来源智能配置 | `src/app/api/settings/route.ts`, `src/app/api/model-test/route.ts` | `system_settings` | `src/lib/app-settings.ts`, `src/lib/model-client.ts`, `src/components/app-settings-dialog.tsx`, `src/components/app-settings-provider.tsx` | `src/lib/settings.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
 | 国际化和帮助 | 支持简体中文、繁体中文、英文和字段帮助提示 | 全局 UI | 无独立业务表 | `src/lib/i18n.ts`, `src/components/language-provider.tsx`, `src/components/help-tooltip.tsx` | `src/lib/i18n.test.ts`, `tests/e2e/core.spec.ts` |
 
 ## 路由和工作台关系
@@ -209,6 +218,7 @@ flowchart TB
   ThesesRoute["/theses"] -.->|legacy group| Research
   EventsRoute["/review-events"] -.->|legacy group| Research
   DecisionsRoute["/trade-decisions"] -.->|legacy group| Research
+  ResearchWorkspace --> ResearchAiTab["AI 研究 tab"]
 
   Governance["/governance"] --> GovernanceWorkspace["规则 + 例外 + 导出"]
   RiskRoute["/risk-rules"] -.->|legacy group| Governance

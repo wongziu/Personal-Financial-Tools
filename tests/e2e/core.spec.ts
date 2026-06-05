@@ -33,8 +33,9 @@ test("opens system settings and saves fx and model configuration", async ({ page
   await dialog.getByRole("spinbutton").fill("6");
 
   await dialog.getByRole("tab", { name: "模型 API" }).click();
+  await expect(dialog.getByRole("combobox", { name: "执行模式" })).toContainText("模型 API");
   await dialog.getByRole("textbox", { name: "Model" }).fill("gpt-4.1-mini");
-  await expect(dialog.getByRole("textbox", { name: "API Key Env" })).toHaveValue("OPENAI_API_KEY");
+  await expect(dialog.getByRole("textbox", { name: "API Key Env" })).toHaveValue("ANTHROPIC_AUTH_TOKEN");
 
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("记录已保存")).toBeVisible();
@@ -87,6 +88,44 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
   await page.goto("/research");
   await expect(page.getByRole("heading", { name: "研究工作台" })).toBeVisible();
   await expect(page.getByTestId("source-intelligence-panel")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "AI 研究" })).toBeVisible();
+});
+
+test("runs an AI research analysis from the research workspace", async ({ page }) => {
+  await page.route("**/api/research-ai", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          mode: "model",
+          model: "openai:test-model@default",
+          securityId: "SEC-US-AAPL",
+          prompt: "mock prompt",
+          analysis: {
+            summary: "Apple evidence is supportive, but earnings risk remains.",
+            evidenceHighlights: ["A-level filing supports demand."],
+            thesisImpact: "Supports the active thesis.",
+            riskFlags: ["Earnings guidance can reset expectations."],
+            suggestedQuestions: ["What would invalidate the thesis?"],
+            nextActions: ["Review the next earnings event before adding exposure."]
+          }
+        }
+      })
+    });
+  });
+
+  await page.goto("/research");
+  await page.getByRole("tab", { name: "AI 研究" }).click();
+  const panel = page.getByTestId("research-ai-panel");
+
+  await expect(panel.getByText("AI 研究分析")).toBeVisible();
+  await panel.getByRole("textbox", { name: "研究问题" }).fill("Should I add exposure before earnings?");
+  await panel.getByRole("button", { name: "生成分析" }).click();
+
+  await expect(panel.getByText("Apple evidence is supportive")).toBeVisible();
+  await expect(panel.getByText("A-level filing supports demand.")).toBeVisible();
+  await expect(panel.getByText("Review the next earnings event before adding exposure.")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {

@@ -14,6 +14,7 @@ export async function PATCH(request: Request) {
     const database = getSeededDatabase();
     const settings = updateAppSettings(database, patch);
     revalidatePath("/");
+    revalidatePath("/research");
     return NextResponse.json({ settings });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 400 });
