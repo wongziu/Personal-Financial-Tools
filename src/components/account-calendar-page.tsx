@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { convertBaseAmountForView } from "@/lib/account-calendar-view";
+import type { Currency } from "@/lib/domain";
 import type { AccountCalendarData } from "@/lib/services";
 import { translateText, translateUiHelp } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -63,6 +65,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
     [language]
   );
   const [selectedAccountId, setSelectedAccountId] = useState("all");
+  const [selectedViewCurrency, setSelectedViewCurrency] = useState<Currency>(data.baseCurrency);
   const [selectedMonth, setSelectedMonth] = useState(data.latestDate.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [anchorAccountId, setAnchorAccountId] = useState(data.accounts[0]?.id ?? "");
@@ -132,12 +135,17 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
   const latestPnl = latestRows.reduce((sum, row) => sum + row.dailyPnlBase, 0);
   const latestExternal = latestRows.reduce((sum, row) => sum + row.externalCashflowBase, 0);
   const latestFxRevaluation = latestRows.reduce((sum, row) => sum + row.fxRevaluationPnlBase, 0);
+  const displayLatestNav = convertBaseAmountForView(latestNav, data.baseCurrency, selectedViewCurrency, latestDate, data.fxRates);
+  const displayLatestPnl = convertBaseAmountForView(latestPnl, data.baseCurrency, selectedViewCurrency, latestDate, data.fxRates);
+  const displayLatestExternal = convertBaseAmountForView(latestExternal, data.baseCurrency, selectedViewCurrency, latestDate, data.fxRates);
+  const displayLatestFxRevaluation = convertBaseAmountForView(latestFxRevaluation, data.baseCurrency, selectedViewCurrency, latestDate, data.fxRates);
   const anchoredDays = selectedRows.filter((row) => row.isAnchored).length;
   const weekDays = weekdayLabels(language);
   const accountName = selectedAccountId === "all" ? localize("全部账户", "All Accounts") : accountOptions.find((item) => item.value === selectedAccountId)?.label ?? selectedAccountId;
 
   const formatMoney = (value: number) => moneyFormatter.format(value);
   const formatSigned = (value: number) => `${value > 0 ? "+" : ""}${formatMoney(value)}`;
+  const displayAmount = (value: number, asOfDate: string) => convertBaseAmountForView(value, data.baseCurrency, selectedViewCurrency, asOfDate, data.fxRates);
   const marketChangeColorMode = settings.marketChange.colorMode;
   const renderMarketChange = (value: number, className?: string) => (
     <MarketChangeValue value={value} colorMode={marketChangeColorMode} className={className}>
@@ -199,7 +207,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("账户每日净值", "Account Daily NAV")} help={translateUiHelp("accountCalendar.dailyNav", language)} />
             </CardDescription>
-            <CardTitle className="text-xl">{formatMoney(latestNav)}</CardTitle>
+            <CardTitle className="text-xl" data-testid="account-calendar-latest-nav">{formatMoney(displayLatestNav)}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -207,7 +215,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("日盈亏", "Daily P&L")} help={translateUiHelp("accountCalendar.dailyPnl", language)} />
             </CardDescription>
-            <CardTitle>{renderMarketChange(latestPnl, "text-xl")}</CardTitle>
+            <CardTitle>{renderMarketChange(displayLatestPnl, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -215,7 +223,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("汇兑重估", "FX Revaluation")} help={translateUiHelp("accountCalendar.fxRevaluation", language)} />
             </CardDescription>
-            <CardTitle>{renderMarketChange(latestFxRevaluation, "text-xl")}</CardTitle>
+            <CardTitle>{renderMarketChange(displayLatestFxRevaluation, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -223,7 +231,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("外部现金流", "External Cashflow")} help={translateUiHelp("accountCalendar.externalCashflow", language)} />
             </CardDescription>
-            <CardTitle>{renderMarketChange(latestExternal, "text-xl")}</CardTitle>
+            <CardTitle>{renderMarketChange(displayLatestExternal, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -243,7 +251,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
               <CardTitle className="text-base">
                 <HeaderHelp label={localize("视图筛选", "View Filters")} help={translateUiHelp("accountCalendar.filters", language)} />
               </CardTitle>
-              <CardDescription>{accountName}</CardDescription>
+              <CardDescription>{accountName} · {selectedViewCurrency}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
@@ -285,6 +293,30 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                     setSelectedDate(null);
                   }}
                 />
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Label>{localize("显示币种", "Display Currency")}</Label>
+                  <HelpTooltip
+                    content={localize(
+                      "默认使用系统基准货币；切换后仅改变本页金额显示视角，不改变底层校准和计算口径。",
+                      "Defaults to the system base currency; switching changes only this page's display currency, not stored anchors or calculation basis."
+                    )}
+                    label={localize("显示币种", "Display Currency")}
+                  />
+                </div>
+                <Select value={selectedViewCurrency} onValueChange={(value) => setSelectedViewCurrency(value as Currency)}>
+                  <SelectTrigger aria-label={localize("显示币种", "Display Currency")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {data.viewCurrencies.map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button variant="outline" onClick={() => setSelectedDate(null)} disabled={!selectedDate}>
                 {localize("清除选中日期", "Clear Selected Date")}
@@ -349,63 +381,79 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarDaysIcon className="size-4 text-primary" />
-                <HeaderHelp label={localize("账户日历", "Account Calendar")} help={translateUiHelp("accountCalendar.grid", language)} />
-              </CardTitle>
-              <CardDescription>
-                {selectedDate ?? selectedMonth} · {data.baseCurrency}
-              </CardDescription>
-            </div>
-            <Badge variant="outline">{visibleRows.length} {t.records}</Badge>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
-              {weekDays.map((day, index) => (
-                <div key={`${day}-${index}`} className="py-1">
-                  {day}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {monthDays(selectedMonth).map((day) => {
-                const total = dailyTotals.get(day.date);
-                const active = selectedDate === day.date;
-                return (
-                  <button
-                    type="button"
-                    key={day.date}
-                    style={{ gridColumnStart: day.day === 1 ? day.weekday + 1 : undefined }}
-                    onClick={() => setSelectedDate(day.date)}
-                    className={cn(
-                      "flex min-h-20 flex-col items-start justify-between rounded-md border bg-background p-2 text-left text-xs transition-colors hover:border-primary hover:bg-primary/5",
-                      active && "border-primary bg-primary/10 text-primary",
-                      !total && "text-muted-foreground"
-                    )}
-                  >
-                    <span className="font-medium">{day.day}</span>
-                    {total ? (
-                      <span className="grid w-full gap-1">
-                        <span className="truncate text-[11px]">{formatMoney(total.netAssetValueBase)}</span>
-                        {renderMarketChange(total.dailyPnlBase, "text-[11px]")}
-                        {total.anchoredCount > 0 ? (
-                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                            <CheckCircle2Icon className="size-3" />
-                            {localize("已校准", "Anchored")}
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="text-[11px]">N/A</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="overflow-x-auto">
+        <div className="grid gap-4">
+          <Card data-testid="account-calendar-grid-card">
+            <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarDaysIcon className="size-4 text-primary" />
+                  <HeaderHelp label={localize("账户日历", "Account Calendar")} help={translateUiHelp("accountCalendar.grid", language)} />
+                </CardTitle>
+                <CardDescription>
+                  {selectedDate ?? selectedMonth} · {selectedViewCurrency}
+                </CardDescription>
+              </div>
+              <Badge variant="outline">{visibleRows.length} {t.records}</Badge>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
+                {weekDays.map((day, index) => (
+                  <div key={`${day}-${index}`} className="py-1">
+                    {day}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {monthDays(selectedMonth).map((day) => {
+                  const total = dailyTotals.get(day.date);
+                  const active = selectedDate === day.date;
+                  return (
+                    <button
+                      type="button"
+                      key={day.date}
+                      style={{ gridColumnStart: day.day === 1 ? day.weekday + 1 : undefined }}
+                      onClick={() => setSelectedDate(day.date)}
+                      className={cn(
+                        "flex min-h-20 flex-col items-start justify-between rounded-md border bg-background p-2 text-left text-xs transition-colors hover:border-primary hover:bg-primary/5",
+                        active && "border-primary bg-primary/10 text-primary",
+                        !total && "text-muted-foreground"
+                      )}
+                    >
+                      <span className="font-medium">{day.day}</span>
+                      {total ? (
+                        <span className="grid w-full gap-1">
+                          <span className="truncate text-[11px]">{formatMoney(displayAmount(total.netAssetValueBase, day.date))}</span>
+                          {renderMarketChange(displayAmount(total.dailyPnlBase, day.date), "text-[11px]")}
+                          {total.anchoredCount > 0 ? (
+                            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                              <CheckCircle2Icon className="size-3" />
+                              {localize("已校准", "Anchored")}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-[11px]">N/A</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="account-calendar-detail-card">
+            <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <HeaderHelp label={localize("账户日历明细", "Account Calendar Details")} help={translateUiHelp("accountCalendar.grid", language)} />
+                </CardTitle>
+                <CardDescription>
+                  {selectedDate ?? selectedMonth} · {selectedViewCurrency}
+                </CardDescription>
+              </div>
+              <Badge variant="outline">{visibleRows.length} {t.records}</Badge>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -436,13 +484,13 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                           <div className="font-medium">{row.accountName}</div>
                           <div className="text-xs text-muted-foreground">{row.accountId}</div>
                         </TableCell>
-                        <TableCell>{formatMoney(row.netAssetValueBase)}</TableCell>
-                        <TableCell>{renderMarketChange(row.dailyPnlBase)}</TableCell>
+                        <TableCell>{formatMoney(displayAmount(row.netAssetValueBase, row.snapshotDate))}</TableCell>
+                        <TableCell>{renderMarketChange(displayAmount(row.dailyPnlBase, row.snapshotDate))}</TableCell>
                         <TableCell>{row.dailyReturn === null ? "N/A" : percentFormatter.format(row.dailyReturn)}</TableCell>
-                        <TableCell>{renderMarketChange(row.externalCashflowBase)}</TableCell>
-                        <TableCell>{renderMarketChange(row.fxRevaluationPnlBase)}</TableCell>
-                        <TableCell>{formatMoney(row.marketValueBase)}</TableCell>
-                        <TableCell>{formatMoney(row.cashValueBase)}</TableCell>
+                        <TableCell>{renderMarketChange(displayAmount(row.externalCashflowBase, row.snapshotDate))}</TableCell>
+                        <TableCell>{renderMarketChange(displayAmount(row.fxRevaluationPnlBase, row.snapshotDate))}</TableCell>
+                        <TableCell>{formatMoney(displayAmount(row.marketValueBase, row.snapshotDate))}</TableCell>
+                        <TableCell>{formatMoney(displayAmount(row.cashValueBase, row.snapshotDate))}</TableCell>
                         <TableCell>
                           {row.isAnchored ? (
                             <Badge variant="secondary">{localize("已校准", "Anchored")}</Badge>
@@ -455,9 +503,9 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                   )}
                 </TableBody>
               </Table>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

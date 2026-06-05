@@ -476,14 +476,32 @@ test("shows account calendar with daily nav pnl and supports nav correction", as
   await expect(page.getByText("账户每日净值", { exact: true })).toBeVisible();
   await expect(page.getByText("日盈亏", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("汇兑重估", { exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId("account-calendar-grid-card")).toBeVisible();
+  await expect(page.getByTestId("account-calendar-detail-card")).toBeVisible();
+  await expect(page.getByTestId("account-calendar-grid-card").locator("table")).toHaveCount(0);
+  await expect(page.getByTestId("account-calendar-detail-card").locator("table")).toHaveCount(1);
 
   await page.getByRole("combobox", { name: "账户", exact: true }).click();
   await page.getByRole("option", { name: /Demo CN Broker/ }).click();
   await expect(page.getByText("ACC-CN-001").first()).toBeVisible();
 
+  await expect(page.getByRole("combobox", { name: "显示币种" })).toContainText("CNY");
+  await expect(page.getByTestId("account-calendar-latest-nav")).toContainText("201,992.00");
+  const cnyLatestNav = await page.getByTestId("account-calendar-latest-nav").textContent();
+  await page.getByRole("combobox", { name: "显示币种" }).click();
+  await page.getByRole("option", { name: "USD" }).click();
+  await expect(page.getByTestId("account-calendar-grid-card")).toContainText("2026-06 · USD");
+  await expect(page.getByTestId("account-calendar-detail-card")).toContainText("USD");
+  await expect(page.getByTestId("account-calendar-latest-nav")).toHaveText(/^\d{1,3}(,\d{3})*\.\d{2}$/);
+  await expect(page.getByTestId("account-calendar-latest-nav")).not.toHaveText(cnyLatestNav ?? "");
+  await page.getByRole("combobox", { name: "显示币种" }).click();
+  await page.getByRole("option", { name: "CNY" }).click();
+
   await page.getByLabel("校准日期").fill("2026-06-02");
   await page.getByRole("spinbutton", { name: "校准净值" }).fill("250000");
-  await page.getByRole("button", { name: /保存校准净值/ }).click();
+  const saveAnchorButton = page.getByRole("button", { name: /保存校准净值/ });
+  await expect(saveAnchorButton).toBeEnabled();
+  await saveAnchorButton.click();
 
   await expect(page.getByText("250,000.00").first()).toBeVisible();
   await expect(page.getByText("已校准").first()).toBeVisible();
