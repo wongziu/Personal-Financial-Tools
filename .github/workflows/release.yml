@@ -1,0 +1,84 @@
+name: Release Candidate Verification
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Verify Tag And Draft Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+
+    steps:
+      - name: Validate production tag format
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v[0-9]*.[0-9]*.[0-9]*)
+              ;;
+            *)
+              echo "Production release tags must use vX.Y.Z format."
+              exit 1
+              ;;
+          esac
+
+          version="${GITHUB_REF_NAME#v}"
+          IFS='.' read -r major minor patch extra <<< "$version"
+
+          if [ -n "${extra:-}" ]; then
+            echo "Production release tags must contain exactly three numeric segments."
+            exit 1
+          fi
+
+          for segment in "$major" "$minor" "$patch"; do
+            case "$segment" in
+              ''|*[!0-9]*)
+                echo "Production release tags must contain numeric major, minor, and patch segments."
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Create GitHub Release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "Release $GITHUB_REF_NAME" \
+            --notes-file docs/release-checklist.md
