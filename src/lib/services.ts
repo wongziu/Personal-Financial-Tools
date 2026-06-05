@@ -12,6 +12,7 @@ import type {
   TransactionInput
 } from "@/lib/domain";
 import { calculateAccountDailyPerformance } from "@/lib/account-performance";
+import { accountCalendarViewCurrencies } from "@/lib/account-calendar-view";
 import { generateBusinessId } from "@/lib/ids";
 import {
   calculateBaseCashValueFallbacks,
@@ -58,11 +59,13 @@ export interface AccountCalendarAccount extends AccountReference {
 
 export interface AccountCalendarData {
   baseCurrency: Currency;
+  viewCurrencies: Currency[];
   startDate: string;
   endDate: string;
   latestDate: string;
   accounts: AccountCalendarAccount[];
   rows: AccountDailyPerformanceRow[];
+  fxRates: FxRateInput[];
   navAnchors: AccountNavAnchorInput[];
 }
 
@@ -313,12 +316,13 @@ export function listAllExportData(database: DatabaseContext) {
 export function getAccountCalendarData(database: DatabaseContext): AccountCalendarData {
   const baseCurrency = selectSetting(database, "baseCurrency", "CNY") as Currency;
   const accounts = accountRows(database);
+  const fxRates = fxRows(database);
   const rows = calculateAccountDailyPerformance({
     accounts,
     transactions: transactionRows(database),
     cashflows: cashflowRows(database),
     prices: priceRows(database),
-    fxRates: fxRows(database),
+    fxRates,
     securities: securityReferences(database),
     navAnchors: accountNavAnchorRows(database),
     baseCurrency
@@ -327,11 +331,17 @@ export function getAccountCalendarData(database: DatabaseContext): AccountCalend
 
   return {
     baseCurrency,
+    viewCurrencies: accountCalendarViewCurrencies({
+      baseCurrency,
+      accountCurrencies: accounts.map((account) => account.currency),
+      fxRates
+    }),
     startDate: dates[0] ?? new Date().toISOString().slice(0, 10),
     endDate: dates.at(-1) ?? new Date().toISOString().slice(0, 10),
     latestDate: dates.at(-1) ?? new Date().toISOString().slice(0, 10),
     accounts,
     rows,
+    fxRates,
     navAnchors: accountNavAnchorRows(database)
   };
 }

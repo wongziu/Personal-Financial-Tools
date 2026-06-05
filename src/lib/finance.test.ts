@@ -193,6 +193,35 @@ describe("portfolio calculation", () => {
     expect(snapshot.positions[0].marketValueBase).toBe(7920);
   });
 
+  test("falls back to holding cost when a position has no market price yet", () => {
+    const snapshot = calculatePortfolioSnapshot({
+      asOfDate: "2026-01-05",
+      holdings: [
+        {
+          accountId: "ACC-US-001",
+          securityId: "US-TSLL",
+          strategyType: "Trading",
+          quantity: 10,
+          totalCost: 7200,
+          averageCost: 720,
+          realizedProfit: 0
+        }
+      ],
+      cashBalances: new Map([["ACC-US-001:CNY", 100]]),
+      prices: [],
+      fxRates: [],
+      securities: [{ id: "US-TSLL", riskThemeTags: ["Trading"], industryLevel1: "Technology" }]
+    });
+
+    expect(snapshot.portfolioNetValue).toBe(7300);
+    expect(snapshot.positions[0]).toMatchObject({
+      securityId: "US-TSLL",
+      marketPrice: 720,
+      marketValueBase: 7200,
+      unrealizedProfit: 0
+    });
+  });
+
   test("recomputes account daily nav and pnl from ledger changes and same-day nav anchors", () => {
     const commonInput = {
       accounts: [

@@ -198,18 +198,34 @@ export function calculatePortfolioSnapshot(input: {
   const baseCurrency = input.baseCurrency ?? "CNY";
   const securityMap = new Map(input.securities.map((security) => [security.id, security]));
   const positions = input.holdings.map((holding) => {
+    const costFallbackPosition = {
+      ...holding,
+      marketPrice: holding.averageCost,
+      marketValueOriginal: holding.totalCost,
+      marketValueBase: holding.totalCost,
+      unrealizedProfit: 0,
+      weight: 0
+    };
     const price = latestByDate(
       input.prices.filter((item) => item.securityId === holding.securityId),
       (item) => item.priceDate,
       input.asOfDate
     );
     if (!price) {
-      throw new Error(`Missing market price for ${holding.securityId}`);
+      return costFallbackPosition;
     }
 
-    const fxRate = getFxRate(input.fxRates, price.currency, baseCurrency, input.asOfDate);
     const marketValueOriginal = holding.quantity * price.closePrice;
-    const marketValueBase = marketValueOriginal * fxRate;
+    let marketValueBase: number;
+    try {
+      marketValueBase = marketValueOriginal * getFxRate(input.fxRates, price.currency, baseCurrency, input.asOfDate);
+    } catch {
+      return {
+        ...costFallbackPosition,
+        marketPrice: price.closePrice,
+        marketValueOriginal
+      };
+    }
 
     return {
       ...holding,
