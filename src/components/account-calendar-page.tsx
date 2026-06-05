@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { CalendarDaysIcon, CheckCircle2Icon, RefreshCcwIcon, SaveIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAppSettings } from "@/components/app-settings-provider";
 import { HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
+import { MarketChangeValue } from "@/components/market-change-value";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +43,7 @@ function weekdayLabels(language: string): string[] {
 export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
   const router = useRouter();
   const { language, t } = useLanguage();
+  const { settings } = useAppSettings();
   const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
   const moneyFormatter = useMemo(
     () =>
@@ -135,6 +138,12 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
 
   const formatMoney = (value: number) => moneyFormatter.format(value);
   const formatSigned = (value: number) => `${value > 0 ? "+" : ""}${formatMoney(value)}`;
+  const marketChangeColorMode = settings.marketChange.colorMode;
+  const renderMarketChange = (value: number, className?: string) => (
+    <MarketChangeValue value={value} colorMode={marketChangeColorMode} className={className}>
+      {formatSigned(value)}
+    </MarketChangeValue>
+  );
 
   const submitAnchor = () => {
     startTransition(async () => {
@@ -198,9 +207,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("日盈亏", "Daily P&L")} help={translateUiHelp("accountCalendar.dailyPnl", language)} />
             </CardDescription>
-            <CardTitle className={cn("text-xl", latestPnl > 0 && "text-red-600", latestPnl < 0 && "text-emerald-600")}>
-              {formatSigned(latestPnl)}
-            </CardTitle>
+            <CardTitle>{renderMarketChange(latestPnl, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -208,9 +215,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("汇兑重估", "FX Revaluation")} help={translateUiHelp("accountCalendar.fxRevaluation", language)} />
             </CardDescription>
-            <CardTitle className={cn("text-xl", latestFxRevaluation > 0 && "text-red-600", latestFxRevaluation < 0 && "text-emerald-600")}>
-              {formatSigned(latestFxRevaluation)}
-            </CardTitle>
+            <CardTitle>{renderMarketChange(latestFxRevaluation, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -218,7 +223,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
             <CardDescription>
               <HeaderHelp label={localize("外部现金流", "External Cashflow")} help={translateUiHelp("accountCalendar.externalCashflow", language)} />
             </CardDescription>
-            <CardTitle className="text-xl">{formatSigned(latestExternal)}</CardTitle>
+            <CardTitle>{renderMarketChange(latestExternal, "text-xl")}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="border-border/70">
@@ -385,9 +390,7 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                     {total ? (
                       <span className="grid w-full gap-1">
                         <span className="truncate text-[11px]">{formatMoney(total.netAssetValueBase)}</span>
-                        <span className={cn("text-[11px]", total.dailyPnlBase > 0 && "text-red-600", total.dailyPnlBase < 0 && "text-emerald-600")}>
-                          {formatSigned(total.dailyPnlBase)}
-                        </span>
+                        {renderMarketChange(total.dailyPnlBase, "text-[11px]")}
                         {total.anchoredCount > 0 ? (
                           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
                             <CheckCircle2Icon className="size-3" />
@@ -434,14 +437,10 @@ export function AccountCalendarPage({ data }: { data: AccountCalendarData }) {
                           <div className="text-xs text-muted-foreground">{row.accountId}</div>
                         </TableCell>
                         <TableCell>{formatMoney(row.netAssetValueBase)}</TableCell>
-                        <TableCell className={cn(row.dailyPnlBase > 0 && "text-red-600", row.dailyPnlBase < 0 && "text-emerald-600")}>
-                          {formatSigned(row.dailyPnlBase)}
-                        </TableCell>
+                        <TableCell>{renderMarketChange(row.dailyPnlBase)}</TableCell>
                         <TableCell>{row.dailyReturn === null ? "N/A" : percentFormatter.format(row.dailyReturn)}</TableCell>
-                        <TableCell>{formatSigned(row.externalCashflowBase)}</TableCell>
-                        <TableCell className={cn(row.fxRevaluationPnlBase > 0 && "text-red-600", row.fxRevaluationPnlBase < 0 && "text-emerald-600")}>
-                          {formatSigned(row.fxRevaluationPnlBase)}
-                        </TableCell>
+                        <TableCell>{renderMarketChange(row.externalCashflowBase)}</TableCell>
+                        <TableCell>{renderMarketChange(row.fxRevaluationPnlBase)}</TableCell>
                         <TableCell>{formatMoney(row.marketValueBase)}</TableCell>
                         <TableCell>{formatMoney(row.cashValueBase)}</TableCell>
                         <TableCell>

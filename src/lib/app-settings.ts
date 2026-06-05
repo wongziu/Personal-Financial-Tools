@@ -1,6 +1,7 @@
 import type { DatabaseContext } from "@/lib/db/client";
 import type { Currency } from "@/lib/domain";
 import type { Language } from "@/lib/i18n";
+import { normalizeMarketChangeColorMode, type MarketChangeColorMode } from "@/lib/market-change";
 
 export type FxProvider = "frankfurter";
 export type ModelApiProvider = "openai-compatible" | "disabled";
@@ -32,10 +33,15 @@ export interface SourceIntelligenceSettings {
   extractionPrompt: string;
 }
 
+export interface MarketChangeSettings {
+  colorMode: MarketChangeColorMode;
+}
+
 export interface AppSettings {
   baseCurrency: Currency;
   uiLanguage: Language;
   fx: FxSettings;
+  marketChange: MarketChangeSettings;
   modelApi: ModelApiSettings;
   sourceIntelligence: SourceIntelligenceSettings;
 }
@@ -44,6 +50,7 @@ export type AppSettingsPatch = Partial<{
   baseCurrency: Currency;
   uiLanguage: Language;
   fx: Partial<FxSettings>;
+  marketChange: Partial<MarketChangeSettings>;
   modelApi: Partial<ModelApiSettings>;
   sourceIntelligence: Partial<SourceIntelligenceSettings>;
 }>;
@@ -58,6 +65,9 @@ export const defaultAppSettings: AppSettings = {
     pairs: ["USD/CNY", "HKD/CNY"],
     lastRefreshAt: null,
     lastRefreshStatus: null
+  },
+  marketChange: {
+    colorMode: "green-up-red-down"
   },
   modelApi: {
     provider: "openai-compatible",
@@ -86,6 +96,7 @@ const settingKeys = {
   fxPairs: "settings.fx.pairs",
   fxLastRefreshAt: "settings.fx.lastRefreshAt",
   fxLastRefreshStatus: "settings.fx.lastRefreshStatus",
+  marketChangeColorMode: "settings.marketChange.colorMode",
   modelProvider: "settings.modelApi.provider",
   modelBaseUrl: "settings.modelApi.baseUrl",
   modelModel: "settings.modelApi.model",
@@ -108,6 +119,7 @@ export const defaultSystemSettingRows = [
   { key: settingKeys.fxPairs, value: JSON.stringify(defaultAppSettings.fx.pairs) },
   { key: settingKeys.fxLastRefreshAt, value: "" },
   { key: settingKeys.fxLastRefreshStatus, value: "" },
+  { key: settingKeys.marketChangeColorMode, value: defaultAppSettings.marketChange.colorMode },
   { key: settingKeys.modelProvider, value: defaultAppSettings.modelApi.provider },
   { key: settingKeys.modelBaseUrl, value: defaultAppSettings.modelApi.baseUrl },
   { key: settingKeys.modelModel, value: defaultAppSettings.modelApi.model },
@@ -187,6 +199,9 @@ export function readAppSettings(database: DatabaseContext): AppSettings {
       lastRefreshAt: nullableStringSetting(settings, settingKeys.fxLastRefreshAt),
       lastRefreshStatus: nullableStringSetting(settings, settingKeys.fxLastRefreshStatus)
     },
+    marketChange: {
+      colorMode: normalizeMarketChangeColorMode(stringSetting(settings, settingKeys.marketChangeColorMode, defaultAppSettings.marketChange.colorMode))
+    },
     modelApi: {
       provider: stringSetting(settings, settingKeys.modelProvider, defaultAppSettings.modelApi.provider) as ModelApiProvider,
       baseUrl: stringSetting(settings, settingKeys.modelBaseUrl, defaultAppSettings.modelApi.baseUrl),
@@ -231,6 +246,11 @@ export function updateAppSettings(database: DatabaseContext, patch: AppSettingsP
       ...(patch.fx ?? {}),
       pairs: patch.fx?.pairs ? normalizePairs(patch.fx.pairs) : current.fx.pairs
     },
+    marketChange: {
+      ...current.marketChange,
+      ...(patch.marketChange ?? {}),
+      colorMode: normalizeMarketChangeColorMode(patch.marketChange?.colorMode ?? current.marketChange.colorMode)
+    },
     modelApi: {
       ...current.modelApi,
       ...(patch.modelApi ?? {})
@@ -249,6 +269,7 @@ export function updateAppSettings(database: DatabaseContext, patch: AppSettingsP
   upsertSetting(database, settingKeys.fxPairs, JSON.stringify(normalizePairs(next.fx.pairs)));
   upsertSetting(database, settingKeys.fxLastRefreshAt, optionalString(next.fx.lastRefreshAt));
   upsertSetting(database, settingKeys.fxLastRefreshStatus, optionalString(next.fx.lastRefreshStatus));
+  upsertSetting(database, settingKeys.marketChangeColorMode, next.marketChange.colorMode);
   upsertSetting(database, settingKeys.modelProvider, next.modelApi.provider);
   upsertSetting(database, settingKeys.modelBaseUrl, next.modelApi.baseUrl);
   upsertSetting(database, settingKeys.modelModel, next.modelApi.model);

@@ -95,9 +95,13 @@ export function ModuleWorkspace({
         <p className="text-sm text-muted-foreground">{descriptionZh} / {descriptionEn}</p>
       </div>
       <Tabs defaultValue={defaultTab} className="flex flex-col gap-4">
-        <TabsList className="flex h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-2 rounded-lg border bg-background p-1.5 shadow-sm">
           {tabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id}>
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="min-h-10 rounded-md border border-transparent px-4 py-2 text-sm font-semibold text-muted-foreground shadow-none data-[state=active]:border-primary/30 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none dark:data-[state=active]:bg-primary/15"
+            >
               {tab.labelZh}
             </TabsTrigger>
           ))}

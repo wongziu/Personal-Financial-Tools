@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import type { ModuleDefinition, ModuleField, ModuleReferenceOptions, ReferenceOption } from "@/lib/modules";
 import { isFieldReadOnlyOnEdit, isModuleRowEditable } from "@/lib/module-records";
 import type { PriceEntrySecurity, Row } from "@/lib/services";
+import { useAppSettings } from "@/components/app-settings-provider";
 import { FxQuickPanel } from "@/components/fx-quick-panel";
 import { FieldLabel, HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
+import { MarketChangeValue } from "@/components/market-change-value";
 import { PriceQuickPanel } from "@/components/price-quick-panel";
 import { SourceIntelligencePanel } from "@/components/source-intelligence-panel";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +47,7 @@ import {
   summarizeRows,
   type DateFilterMode
 } from "@/lib/module-interactions";
+import type { MarketChangeColorMode } from "@/lib/market-change";
 import { cn } from "@/lib/utils";
 
 function displayValue(value: unknown, language: Language): string {
@@ -79,6 +82,12 @@ function formatAmountValue(value: unknown, language: Language): string {
   }).format(numberValue);
 }
 
+function formatSignedAmountValue(value: unknown, language: Language): string {
+  const numberValue = Number(value);
+  const formatted = formatAmountValue(value, language);
+  return Number.isFinite(numberValue) && numberValue > 0 ? `+${formatted}` : formatted;
+}
+
 function isAmountDisplayColumn(column: string): boolean {
   return (
     column === "amount" ||
@@ -96,6 +105,16 @@ function isAmountDisplayColumn(column: string): boolean {
       "cumulative_pnl_base"
     ].includes(column)
   );
+}
+
+function isAmountChangeDisplayColumn(column: string): boolean {
+  return [
+    "daily_pnl_base",
+    "cumulative_pnl_base",
+    "external_cashflow_base",
+    "fx_revaluation_base",
+    "fx_revaluation_pnl_base"
+  ].includes(column);
 }
 
 function displayReferenceValue(value: unknown, options: ReferenceOption[] | undefined, language: Language): string {
@@ -191,12 +210,14 @@ function TableDisplayValue({
   column,
   field,
   value,
-  language
+  language,
+  marketChangeColorMode
 }: {
   column: string;
   field?: ModuleField;
   value: unknown;
   language: Language;
+  marketChangeColorMode: MarketChangeColorMode;
 }) {
   if (field?.type === "boolean" || isBooleanDisplayColumn(column)) {
     return <Badge variant="outline">{translateBoolean(value, language)}</Badge>;
@@ -212,6 +233,15 @@ function TableDisplayValue({
 
   if (column === "liquidity_level") {
     return <Badge variant="outline">{displayValue(value, language)}</Badge>;
+  }
+
+  if (isAmountChangeDisplayColumn(column) && Number.isFinite(Number(value))) {
+    const numberValue = Number(value);
+    return (
+      <MarketChangeValue value={numberValue} colorMode={marketChangeColorMode}>
+        {formatSignedAmountValue(value, language)}
+      </MarketChangeValue>
+    );
   }
 
   if (isAmountDisplayColumn(column)) {
@@ -887,6 +917,8 @@ export function ModulePage({
 }) {
   const router = useRouter();
   const { language, t } = useLanguage();
+  const { settings } = useAppSettings();
+  const marketChangeColorMode = settings.marketChange.colorMode;
   const dateFields = useMemo(() => getCalendarDateFields(definition), [definition]);
   const initialDateColumn = useMemo(() => getDefaultCalendarColumn(definition), [definition]);
   const fieldByColumn = useMemo(() => new Map(definition.fields.map((field) => [field.column, field])), [definition.fields]);
@@ -1292,7 +1324,7 @@ export function ModulePage({
 
                       return (
                         <TableCell key={column} data-column={column} rowSpan={rowSpan > 1 ? rowSpan : undefined} className={rowSpan > 1 ? "align-middle" : undefined}>
-                          <TableDisplayValue column={column} field={field} value={value} language={language} />
+                          <TableDisplayValue column={column} field={field} value={value} language={language} marketChangeColorMode={marketChangeColorMode} />
                         </TableCell>
                       );
                     })}

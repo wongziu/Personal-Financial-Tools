@@ -24,6 +24,10 @@ test("opens system settings and saves fx and model configuration", async ({ page
   const dialog = page.getByRole("dialog");
 
   await expect(dialog.getByRole("heading", { name: "系统配置" })).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "涨跌颜色" })).toContainText("绿涨 / 红跌");
+  await dialog.getByRole("combobox", { name: "涨跌颜色" }).click();
+  await page.getByRole("option", { name: "红涨 / 绿跌" }).click();
+
   await dialog.getByRole("tab", { name: "汇率" }).click();
   await expect(dialog.getByRole("combobox", { name: "汇率数据源" })).toContainText("Frankfurter");
   await dialog.getByRole("spinbutton").fill("6");
@@ -34,18 +38,49 @@ test("opens system settings and saves fx and model configuration", async ({ page
 
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("记录已保存")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-market-change-color-mode="red-up-green-down"]').first()).toBeVisible();
 });
 
-test("groups related modules into tabbed workspaces", async ({ page }) => {
-  await page.goto("/portfolio");
+test("groups related modules into clearer tabbed workspaces", async ({ page }) => {
+  await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "资产工作台" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "账户", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "账户", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "标的", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "标的交易流水", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "账户现金流", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "行情数据", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "流水", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "资产工作台", exact: true })).toHaveCount(0);
+
+  await page.goto("/accounts");
+
+  await expect(page.getByRole("heading", { name: "账户", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "账户资料", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "账户日历" }).click();
   await expect(page.getByRole("heading", { name: /账户日历/ })).toBeVisible();
 
+  await page.goto("/securities");
+  await expect(page.getByRole("heading", { name: /标的/ }).first()).toBeVisible();
+  await expect(page.getByRole("tab", { name: "账户", exact: true })).toHaveCount(0);
+
+  await page.goto("/transactions");
+  await expect(page.getByRole("heading", { name: /标的交易流水/ })).toBeVisible();
+  await expect(page.locator('aside nav a[aria-current="page"]')).toHaveText("标的交易流水");
+  await expect(page.getByRole("tab", { name: "交易流水" })).toHaveCount(0);
+
+  await page.goto("/cashflows");
+  await expect(page.getByRole("heading", { name: /账户现金流/ })).toBeVisible();
+  await expect(page.locator('aside nav a[aria-current="page"]')).toHaveText("账户现金流");
+  await expect(page.getByRole("tab", { name: "现金流" })).toHaveCount(0);
+
   await page.goto("/ledger");
-  await expect(page.getByRole("heading", { name: "流水与行情" })).toBeVisible();
+  await expect(page).toHaveURL(/\/transactions$/);
+  await expect(page.getByRole("tab", { name: "价格" })).toHaveCount(0);
+
+  await page.goto("/market-data");
+  await expect(page.getByRole("heading", { name: "行情数据", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "价格" })).toBeVisible();
   await page.getByRole("tab", { name: "汇率" }).click();
   await expect(page.getByTestId("fx-quick-panel")).toBeVisible();
 
@@ -380,7 +415,7 @@ test("filters dated modules through the calendar dimension", async ({ page }) =>
 test("keeps master data pages free of misleading calendar panels", async ({ page }) => {
   await page.goto("/accounts");
 
-  await expect(page.getByRole("heading", { name: /账户/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "账户", exact: true })).toBeVisible();
   await expect(page.getByText("日历维度")).toBeHidden();
   await expect(page.getByText("账户 ID")).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "账户类型" })).toBeVisible();

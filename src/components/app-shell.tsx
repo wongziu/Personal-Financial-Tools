@@ -2,12 +2,15 @@
 
 import { useEffect } from "react";
 import {
+  BanknoteIcon,
   BookOpenIcon,
-  DatabaseIcon,
+  ChartCandlestickIcon,
   GaugeIcon,
-  LandmarkIcon,
   GlobeIcon,
-  ShieldAlertIcon
+  ReceiptTextIcon,
+  ShieldAlertIcon,
+  TargetIcon,
+  WalletCardsIcon
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,20 +25,21 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", labelZh: "仪表盘", labelEn: "Dashboard", icon: GaugeIcon },
-  { href: "/portfolio", labelZh: "资产工作台", labelEn: "Portfolio Workspace", icon: LandmarkIcon },
-  { href: "/ledger", labelZh: "流水与行情", labelEn: "Ledger & Market Data", icon: DatabaseIcon },
+  { href: "/accounts", labelZh: "账户", labelEn: "Accounts", icon: WalletCardsIcon },
+  { href: "/securities", labelZh: "标的", labelEn: "Securities", icon: TargetIcon },
+  { href: "/transactions", labelZh: "标的交易流水", labelEn: "Security Transactions", icon: ReceiptTextIcon },
+  { href: "/cashflows", labelZh: "账户现金流", labelEn: "Account Cashflows", icon: BanknoteIcon },
+  { href: "/market-data", labelZh: "行情数据", labelEn: "Market Data", icon: ChartCandlestickIcon },
   { href: "/research", labelZh: "研究工作台", labelEn: "Research Workspace", icon: BookOpenIcon },
   { href: "/governance", labelZh: "风控与导出", labelEn: "Governance & Export", icon: ShieldAlertIcon }
 ];
 
 const legacyRouteGroups: Record<string, string> = {
-  "/accounts": "/portfolio",
-  "/account-calendar": "/portfolio",
-  "/securities": "/portfolio",
-  "/transactions": "/ledger",
-  "/cashflows": "/ledger",
-  "/prices": "/ledger",
-  "/fx-rates": "/ledger",
+  "/portfolio": "/accounts",
+  "/account-calendar": "/accounts",
+  "/ledger": "/transactions",
+  "/prices": "/market-data",
+  "/fx-rates": "/market-data",
   "/sources": "/research",
   "/theses": "/research",
   "/review-events": "/research",
@@ -45,11 +49,19 @@ const legacyRouteGroups: Record<string, string> = {
   "/export": "/governance"
 };
 
+function activeNavigationPath(pathname: string) {
+  if (pathname.startsWith("/securities")) {
+    return "/securities";
+  }
+
+  return legacyRouteGroups[pathname] ?? pathname;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { language, setLanguage, t } = useLanguage();
   const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
-  const activePath = legacyRouteGroups[pathname] ?? pathname;
+  const activePath = activeNavigationPath(pathname);
 
   useEffect(() => {
     if (window.sessionStorage.getItem("investment-system-fx-auto-refresh") === "1") {
@@ -81,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 href={item.href}
                 key={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                   active && "bg-accent text-foreground"

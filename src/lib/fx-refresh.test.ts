@@ -13,17 +13,20 @@ describe("fx refresh", () => {
       }
     });
 
+    const requestedUrls: string[] = [];
+
     const result = await refreshFxRates(database, {
       fetcher: async (url) => {
+        requestedUrls.push(url);
         if (url.includes("base=USD")) {
           return {
             ok: true,
-            json: async () => ({ date: "2026-06-03", base: "USD", rates: { CNY: 7.1 } })
+            json: async () => [{ date: "2026-06-05", base: "USD", quote: "CNY", rate: 6.7692 }]
           };
         }
         return {
           ok: true,
-          json: async () => ({ date: "2026-06-03", base: "HKD", rates: { CNY: 0.91 } })
+          json: async () => [{ date: "2026-06-05", base: "HKD", quote: "CNY", rate: 0.86326 }]
         };
       },
       now: new Date("2026-06-04T00:00:00.000Z")
@@ -35,18 +38,22 @@ describe("fx refresh", () => {
     const settings = readAppSettings(database);
 
     expect(result).toEqual({ refreshed: true, inserted: 2, skipped: false, message: "Refreshed 2 FX rates." });
+    expect(requestedUrls).toEqual([
+      "https://api.frankfurter.dev/v2/rates?base=USD&quotes=CNY",
+      "https://api.frankfurter.dev/v2/rates?base=HKD&quotes=CNY"
+    ]);
     expect(rows).toContainEqual({
-      rate_date: "2026-06-03",
+      rate_date: "2026-06-05",
       from_currency: "HKD",
       to_currency: "CNY",
-      rate: 0.91,
+      rate: 0.86326,
       source: "Frankfurter auto refresh"
     });
     expect(rows).toContainEqual({
-      rate_date: "2026-06-03",
+      rate_date: "2026-06-05",
       from_currency: "USD",
       to_currency: "CNY",
-      rate: 7.1,
+      rate: 6.7692,
       source: "Frankfurter auto refresh"
     });
     expect(settings.fx.lastRefreshAt).toBe("2026-06-04T00:00:00.000Z");

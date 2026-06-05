@@ -20,19 +20,43 @@ export interface FxRefreshResult {
   message: string;
 }
 
-interface FrankfurterResponse {
+interface FrankfurterRateResponse {
   date: string;
   base: string;
-  rates: Record<string, number>;
+  quote: string;
+  rate: number;
 }
 
-function isFrankfurterResponse(value: unknown): value is FrankfurterResponse {
+function isFrankfurterRateResponse(value: unknown): value is FrankfurterRateResponse {
   if (!value || typeof value !== "object") {
     return false;
   }
 
-  const candidate = value as FrankfurterResponse;
-  return typeof candidate.date === "string" && typeof candidate.base === "string" && Boolean(candidate.rates);
+  const candidate = value as FrankfurterRateResponse;
+  return (
+    typeof candidate.date === "string" &&
+    typeof candidate.base === "string" &&
+    typeof candidate.quote === "string" &&
+    typeof candidate.rate === "number"
+  );
+}
+
+function findFrankfurterRate(
+  payload: unknown,
+  fromCurrency: string,
+  toCurrency: string
+): FrankfurterRateResponse | undefined {
+  if (!Array.isArray(payload)) {
+    return undefined;
+  }
+
+  return payload.find((item) => {
+    return (
+      isFrankfurterRateResponse(item) &&
+      item.base.toUpperCase() === fromCurrency.toUpperCase() &&
+      item.quote.toUpperCase() === toCurrency.toUpperCase()
+    );
+  });
 }
 
 function splitPair(pair: string): { fromCurrency: string; toCurrency: string } {
@@ -42,8 +66,8 @@ function splitPair(pair: string): { fromCurrency: string; toCurrency: string } {
 
 function buildFrankfurterUrl(pair: string): string {
   const { fromCurrency, toCurrency } = splitPair(pair);
-  const params = new URLSearchParams({ base: fromCurrency, symbols: toCurrency });
-  return `https://api.frankfurter.dev/v1/latest?${params.toString()}`;
+  const params = new URLSearchParams({ base: fromCurrency, quotes: toCurrency });
+  return `https://api.frankfurter.dev/v2/rates?${params.toString()}`;
 }
 
 function hoursSince(date: string | null, now: Date): number {
@@ -116,17 +140,18 @@ export async function refreshFxRates(database: DatabaseContext, options: FxRefre
     }
 
     const payload = await response.json();
-    if (!isFrankfurterResponse(payload)) {
+    const rateRecord = findFrankfurterRate(payload, fromCurrency, toCurrency);
+    if (!rateRecord) {
       throw new Error(`Frankfurter response for ${pair} is not valid`);
     }
 
-    const rate = Number(payload.rates[toCurrency]);
+    const rate = Number(rateRecord.rate);
     if (!Number.isFinite(rate) || rate <= 0) {
       throw new Error(`Frankfurter response for ${pair} does not include a positive rate`);
     }
 
     upsertFxRate(database, {
-      rateDate: payload.date,
+      rateDate: rateRecord.date,
       fromCurrency,
       toCurrency,
       rate,

@@ -14,6 +14,7 @@ describe("application settings", () => {
     expect(settings.fx.autoRefreshEnabled).toBe(true);
     expect(settings.fx.refreshIntervalHours).toBe(24);
     expect(settings.fx.pairs).toEqual(["USD/CNY", "HKD/CNY"]);
+    expect(settings.marketChange.colorMode).toBe("green-up-red-down");
     expect(settings.modelApi.provider).toBe("openai-compatible");
     expect(settings.modelApi.apiKeyMode).toBe("env");
     expect(settings.sourceIntelligence.enabled).toBe(true);
@@ -32,6 +33,9 @@ describe("application settings", () => {
         model: "gpt-4.1-mini",
         apiKeyEnvVar: "OPENAI_API_KEY"
       },
+      marketChange: {
+        colorMode: "red-up-green-down"
+      },
       sourceIntelligence: {
         maxSources: 8
       }
@@ -46,6 +50,7 @@ describe("application settings", () => {
     expect(settings.modelApi.model).toBe("gpt-4.1-mini");
     expect(settings.modelApi.baseUrl).toBe("https://api.openai.com/v1");
     expect(settings.modelApi.apiKeyEnvVar).toBe("OPENAI_API_KEY");
+    expect(settings.marketChange.colorMode).toBe("red-up-green-down");
     expect(settings.sourceIntelligence.maxSources).toBe(8);
   });
 });

@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { RefreshCcwIcon, SaveIcon, SettingsIcon, SparklesIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAppSettings } from "@/components/app-settings-provider";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +15,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { AppSettings } from "@/lib/app-settings";
-import { defaultAppSettings } from "@/lib/app-settings";
 import { translateText, type Language } from "@/lib/i18n";
 
 function localize(language: Language, zh: string, en: string): string {
@@ -52,9 +53,11 @@ function SettingRow({
 }
 
 export function AppSettingsDialog() {
+  const router = useRouter();
   const { language, setLanguage, t } = useLanguage();
+  const { settings: appSettings, setSettings: commitSettings, reloadSettings } = useAppSettings();
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>(defaultAppSettings);
+  const [settings, setSettings] = useState<AppSettings>(appSettings);
   const [isPending, startTransition] = useTransition();
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
 
@@ -64,18 +67,19 @@ export function AppSettingsDialog() {
 
   useEffect(() => {
     if (!open) {
+      setSettings(appSettings);
+    }
+  }, [appSettings, open]);
+
+  useEffect(() => {
+    if (!open) {
       return;
     }
 
-    fetch("/api/settings")
-      .then((response) => response.json())
-      .then((payload: { settings?: AppSettings }) => {
-        if (payload.settings) {
-          setSettings(payload.settings);
-        }
-      })
+    reloadSettings()
+      .then(setSettings)
       .catch(() => toast.error(t.formError));
-  }, [open, t.formError]);
+  }, [open, reloadSettings, t.formError]);
 
   const updateSettings = (updater: (current: AppSettings) => AppSettings) => {
     setSettings((current) => updater(current));
@@ -89,12 +93,17 @@ export function AppSettingsDialog() {
         body: JSON.stringify(settings)
       });
 
-      if (!response.ok) {
+      const payload = (await response.json()) as { settings?: AppSettings };
+
+      if (!response.ok || !payload.settings) {
         toast.error(t.formError);
         return;
       }
 
-      setLanguage(settings.uiLanguage);
+      setSettings(payload.settings);
+      commitSettings(payload.settings);
+      setLanguage(payload.settings.uiLanguage);
+      router.refresh();
       toast.success(t.formSaved);
     });
   };
@@ -178,6 +187,31 @@ export function AppSettingsDialog() {
                     <SelectItem value="zh-CN">简体中文</SelectItem>
                     <SelectItem value="zh-TW">繁體中文</SelectItem>
                     <SelectItem value="en-US">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "涨跌颜色", "Gain/Loss Colors")}
+                description={localize(language, "用于日盈亏、汇兑重估等金额变动；保存后相关页面会按该模式显示颜色和箭头。", "Used for daily P&L, FX revaluation, and other amount changes; related pages show matching colors and arrows after saving.")}
+              >
+                <Select
+                  value={settings.marketChange.colorMode}
+                  onValueChange={(value) =>
+                    updateSettings((current) => ({
+                      ...current,
+                      marketChange: {
+                        ...current.marketChange,
+                        colorMode: value as AppSettings["marketChange"]["colorMode"]
+                      }
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label={localize(language, "涨跌颜色", "Gain/Loss Colors")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="green-up-red-down">{localize(language, "绿涨 / 红跌", "Green Up / Red Down")}</SelectItem>
+                    <SelectItem value="red-up-green-down">{localize(language, "红涨 / 绿跌", "Red Up / Green Down")}</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>

@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     const result = await refreshFxRates(database, { mode: body.mode ?? "manual" });
     revalidatePath("/");
     revalidatePath("/fx-rates");
-    revalidatePath("/ledger");
+    revalidatePath("/market-data");
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 400 });

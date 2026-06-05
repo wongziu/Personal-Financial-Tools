@@ -1,14 +1,15 @@
 "use client";
 
 import type { DashboardData } from "@/lib/services";
+import { useAppSettings } from "@/components/app-settings-provider";
 import { HeaderHelp, HelpTooltip } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
+import { MarketChangeValue } from "@/components/market-change-value";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { translateColumn, translateColumnHelp, translateEnum, translateText, translateUiHelp } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 function money(value: number, currency: string, language: string) {
   return new Intl.NumberFormat(language, { style: "currency", currency }).format(value);
@@ -20,18 +21,23 @@ function percent(value: number) {
 
 export function DashboardView({ data }: { data: DashboardData }) {
   const { language, t } = useLanguage();
+  const { settings } = useAppSettings();
   const localize = (zh: string, en: string) => (language === "en-US" ? en : translateText(zh, language));
   const formatMoney = (value: number) => money(value, data.baseCurrency, language);
   const formatSignedMoney = (value: number) => `${value > 0 ? "+" : ""}${formatMoney(value)}`;
+  const marketChangeColorMode = settings.marketChange.colorMode;
   const metricCards = [
     { label: t.portfolioNetValue, value: formatMoney(data.metrics.portfolioNetValue), helpKey: "dashboard.portfolioNetValue" },
     { label: t.asOfDate, value: data.asOfDate, helpKey: "dashboard.asOfDate" },
     { label: t.cashValue, value: formatMoney(data.metrics.cashValueBase), helpKey: "dashboard.cashValue" },
     {
       label: localize("汇兑重估影响", "FX Revaluation"),
-      value: formatSignedMoney(data.metrics.fxRevaluationBase),
-      helpKey: "dashboard.fxRevaluation",
-      valueClassName: cn(data.metrics.fxRevaluationBase > 0 && "text-red-600", data.metrics.fxRevaluationBase < 0 && "text-emerald-600")
+      value: (
+        <MarketChangeValue value={data.metrics.fxRevaluationBase} colorMode={marketChangeColorMode}>
+          {formatSignedMoney(data.metrics.fxRevaluationBase)}
+        </MarketChangeValue>
+      ),
+      helpKey: "dashboard.fxRevaluation"
     },
     { label: t.largestHolding, value: `${data.metrics.largestHoldingName} · ${percent(data.metrics.largestHoldingWeight)}`, helpKey: "dashboard.largestHolding" },
     { label: t.maxTheme, value: `${data.metrics.maxThemeName} · ${percent(data.metrics.maxThemeWeight)}`, helpKey: "dashboard.maxTheme" }
@@ -53,7 +59,7 @@ export function DashboardView({ data }: { data: DashboardData }) {
               <CardDescription>
                 <HeaderHelp label={metric.label} help={translateUiHelp(metric.helpKey, language)} />
               </CardDescription>
-              <CardTitle className={cn("text-xl", metric.valueClassName)}>{metric.value}</CardTitle>
+              <CardTitle className="text-xl">{metric.value}</CardTitle>
             </CardHeader>
           </Card>
         ))}

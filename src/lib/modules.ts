@@ -157,10 +157,10 @@ export const moduleDefinitions: ModuleDefinition[] = [
   {
     id: "transactions",
     table: "transactions",
-    navLabelZh: "交易流水",
-    navLabelEn: "Transactions",
-    descriptionZh: "事实账本。Draft/Pending 可编辑，Settled 后通过更正记录修正。",
-    descriptionEn: "Fact ledger. Draft/Pending are editable; settled rows require corrections.",
+    navLabelZh: "标的交易流水",
+    navLabelEn: "Security Transactions",
+    descriptionZh: "记录围绕标的发生的买入、卖出、申购、赎回和转入转出；Draft/Pending 可编辑，Settled 后通过更正记录修正。",
+    descriptionEn: "Record security-level buys, sells, subscriptions, redemptions, and transfers. Draft/Pending are editable; settled rows require corrections.",
     idPrefix: "TRD",
     tableColumns: ["id", "trade_date", "account_id", "security_id", "transaction_type", "quantity", "base_currency_amount", "status"],
     fields: [
@@ -211,8 +211,8 @@ export const moduleDefinitions: ModuleDefinition[] = [
   {
     id: "cashflows",
     table: "cashflows",
-    navLabelZh: "现金流",
-    navLabelEn: "Cashflows",
+    navLabelZh: "账户现金流",
+    navLabelEn: "Account Cashflows",
     descriptionZh: "记录账户出入金、分红、利息、费用和换汇等现金变动；金额按正数填写，系统根据类型判断方向。",
     descriptionEn: "Record account deposits, withdrawals, dividends, interest, fees, and FX cash movements. Enter positive amounts; direction is derived from type.",
     idPrefix: "CFL",

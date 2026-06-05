@@ -744,7 +744,7 @@ describe("database integration", () => {
     seedDemoData(database);
     const definition = findModuleDefinition("cashflows");
 
-    expect(definition?.navLabelZh).toBe("现金流");
+    expect(definition?.navLabelZh).toBe("账户现金流");
     expect(definition?.descriptionZh).toContain("账户出入金");
     expect(definition?.descriptionZh).not.toContain("公司行为");
     expect(definition?.fields.find((field) => field.name === "id")?.hidden).toBe(true);
