@@ -1,4 +1,5 @@
 import type { AppSettings } from "@/lib/app-settings";
+import { callConfiguredModel, getModelApiKey, parseJsonObjectFromModel } from "@/lib/model-client";
 
 export interface SourceIntelligenceInput {
   settings: AppSettings;
@@ -98,14 +99,6 @@ function localDraft(input: SourceIntelligenceInput, prompt: string): SourceIntel
   };
 }
 
-function apiKeyFromSettings(settings: AppSettings): string | undefined {
-  if (settings.modelApi.apiKeyMode !== "env") {
-    return undefined;
-  }
-
-  return process.env[settings.modelApi.apiKeyEnvVar];
-}
-
 function parseModelJson(value: unknown): Partial<SourceDraftFields> {
   if (!value || typeof value !== "object") {
     return {};
@@ -115,33 +108,20 @@ function parseModelJson(value: unknown): Partial<SourceDraftFields> {
 }
 
 async function modelDraft(input: SourceIntelligenceInput, prompt: string, apiKey: string): Promise<SourceIntelligenceDraft> {
-  const fetcher = input.fetcher ?? fetch;
-  const response = await fetcher(`${input.settings.modelApi.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: input.settings.modelApi.model,
-      temperature: input.settings.modelApi.temperature,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: input.settings.sourceIntelligence.extractionPrompt },
-        { role: "user", content: prompt }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Model source extraction failed: ${response.status}`);
+  if (!apiKey) {
+    throw new Error("Model API key is missing.");
   }
 
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content ?? "{}";
-  const parsed = parseModelJson(JSON.parse(content));
+  const result = await callConfiguredModel({
+    settings: input.settings,
+    fetcher: input.fetcher,
+    responseFormat: "json",
+    messages: [
+      { role: "system", content: input.settings.sourceIntelligence.extractionPrompt },
+      { role: "user", content: prompt }
+    ]
+  });
+  const parsed = parseModelJson(parseJsonObjectFromModel(result.content));
   const fallback = localDraft(input, prompt);
 
   return {
@@ -159,9 +139,9 @@ async function modelDraft(input: SourceIntelligenceInput, prompt: string, apiKey
 
 export async function draftInformationSource(input: SourceIntelligenceInput): Promise<SourceIntelligenceDraft> {
   const prompt = buildInformationExtractionPrompt(input);
-  const apiKey = apiKeyFromSettings(input.settings);
+  const apiKey = getModelApiKey(input.settings);
 
-  if (!input.settings.sourceIntelligence.enabled || input.settings.modelApi.provider === "disabled" || !apiKey) {
+  if (!input.settings.sourceIntelligence.enabled || input.settings.modelApi.executionMode !== "model" || input.settings.modelApi.provider === "disabled" || !apiKey) {
     return localDraft(input, prompt);
   }
 

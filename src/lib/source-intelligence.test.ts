@@ -39,4 +39,49 @@ describe("source intelligence", () => {
     expect(draft.fields.keyFacts).toContain("Apple reported stronger iPhone demand");
     expect(draft.reuseTargets).toEqual(["sources", "theses", "trade-decisions", "review-events"]);
   });
+
+  test("uses the configured model client when API execution is available", async () => {
+    process.env.SOURCE_AI_TEST_KEY = "source-key";
+    const draft = await draftInformationSource({
+      settings: {
+        ...defaultAppSettings,
+        modelApi: {
+          ...defaultAppSettings.modelApi,
+          executionMode: "model",
+          apiKeyEnvVar: "SOURCE_AI_TEST_KEY",
+          model: "openai:test-model@default"
+        }
+      },
+      sourceText: "Apple raised guidance and highlighted services growth.",
+      sourceUrl: "https://example.com/apple-guidance",
+      securityName: "Apple Inc.",
+      today: "2026-06-04",
+      fetcher: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    informationDate: "2026-06-03",
+                    sourceName: "Apple investor update",
+                    informationType: "Filing",
+                    evidenceLevel: "A",
+                    keyFacts: "Apple raised guidance.",
+                    thesisImpact: "Support",
+                    triggersReview: true
+                  })
+                }
+              }
+            ]
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+    });
+
+    expect(draft.mode).toBe("model");
+    expect(draft.fields.sourceName).toBe("Apple investor update");
+    expect(draft.fields.obtainedDate).toBe("2026-06-04");
+    expect(draft.fields.evidenceLevel).toBe("A");
+  });
 });

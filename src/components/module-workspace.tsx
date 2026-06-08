@@ -1,15 +1,28 @@
 import { AccountCalendarPage } from "@/components/account-calendar-page";
 import { ExportPage } from "@/components/export-page";
 import { ModulePage } from "@/components/module-page";
+import { ResearchAiPanel } from "@/components/research-ai-panel";
 import { TradeDecisionsPage, type TradeDecisionReferenceOptions } from "@/components/trade-decisions-page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DatabaseContext } from "@/lib/db/client";
 import { buildModuleReferenceOptions, findModuleDefinition, listModuleRows } from "@/lib/modules";
+import type { ReferenceOption } from "@/lib/modules";
 import { getAccountCalendarData, getPriceEntrySecurities, type Row } from "@/lib/services";
 
 export type WorkspaceTab =
   | { id: string; labelZh: string; labelEn: string; moduleId: string }
-  | { id: string; labelZh: string; labelEn: string; special: "account-calendar" | "trade-decisions" | "export" };
+  | { id: string; labelZh: string; labelEn: string; special: "account-calendar" | "trade-decisions" | "research-ai" | "export" };
+
+function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] {
+  const securities = database.sqlite
+    .prepare("SELECT id, name, ticker FROM securities ORDER BY rowid DESC")
+    .all() as Row[];
+  return securities.map((row) => ({
+    value: String(row.id),
+    label: [row.name, row.ticker].filter(Boolean).map(String).join(" · "),
+    metadata: {}
+  }));
+}
 
 function tradeDecisionReferenceOptions(database: DatabaseContext): TradeDecisionReferenceOptions {
   const securities = database.sqlite
@@ -49,6 +62,9 @@ function renderTabContent(database: DatabaseContext, tab: WorkspaceTab) {
     if (tab.special === "trade-decisions") {
       const rows = database.sqlite.prepare("SELECT * FROM trade_decisions ORDER BY rowid DESC").all() as Row[];
       return <TradeDecisionsPage rows={rows} referenceOptions={tradeDecisionReferenceOptions(database)} />;
+    }
+    if (tab.special === "research-ai") {
+      return <ResearchAiPanel securities={securityReferenceOptions(database)} />;
     }
     return <ExportPage />;
   }

@@ -7,7 +7,8 @@ const tabs: WorkspaceTab[] = [
   { id: "sources", labelZh: "信息来源", labelEn: "Sources", moduleId: "sources" },
   { id: "theses", labelZh: "投资论点", labelEn: "Theses", moduleId: "theses" },
   { id: "review-events", labelZh: "复核日历", labelEn: "Review Events", moduleId: "review-events" },
-  { id: "trade-decisions", labelZh: "交易决策", labelEn: "Trade Decisions", special: "trade-decisions" }
+  { id: "trade-decisions", labelZh: "交易决策", labelEn: "Trade Decisions", special: "trade-decisions" },
+  { id: "research-ai", labelZh: "AI 研究", labelEn: "AI Research", special: "research-ai" }
 ];
 
 export default function ResearchWorkspacePage() {

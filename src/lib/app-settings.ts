@@ -4,6 +4,7 @@ import type { Language } from "@/lib/i18n";
 import { normalizeMarketChangeColorMode, type MarketChangeColorMode } from "@/lib/market-change";
 
 export type FxProvider = "frankfurter";
+export type ModelExecutionMode = "local" | "model";
 export type ModelApiProvider = "openai-compatible" | "disabled";
 export type ApiKeyMode = "env";
 
@@ -17,12 +18,14 @@ export interface FxSettings {
 }
 
 export interface ModelApiSettings {
+  executionMode: ModelExecutionMode;
   provider: ModelApiProvider;
   baseUrl: string;
   model: string;
   apiKeyMode: ApiKeyMode;
   apiKeyEnvVar: string;
   temperature: number;
+  maxTokens: number;
 }
 
 export interface SourceIntelligenceSettings {
@@ -70,12 +73,14 @@ export const defaultAppSettings: AppSettings = {
     colorMode: "green-up-red-down"
   },
   modelApi: {
+    executionMode: "model",
     provider: "openai-compatible",
-    baseUrl: "https://api.openai.com/v1",
-    model: "gpt-4.1-mini",
+    baseUrl: "http://ai-hub.yingzhongtong.com/openai/v1",
+    model: process.env.ANTHROPIC_MODEL ?? "claude:claude-sonnet-4-6@default",
     apiKeyMode: "env",
-    apiKeyEnvVar: "OPENAI_API_KEY",
-    temperature: 0.2
+    apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+    temperature: 0.2,
+    maxTokens: 2400
   },
   sourceIntelligence: {
     enabled: true,
@@ -97,12 +102,14 @@ const settingKeys = {
   fxLastRefreshAt: "settings.fx.lastRefreshAt",
   fxLastRefreshStatus: "settings.fx.lastRefreshStatus",
   marketChangeColorMode: "settings.marketChange.colorMode",
+  modelExecutionMode: "settings.modelApi.executionMode",
   modelProvider: "settings.modelApi.provider",
   modelBaseUrl: "settings.modelApi.baseUrl",
   modelModel: "settings.modelApi.model",
   modelApiKeyMode: "settings.modelApi.apiKeyMode",
   modelApiKeyEnvVar: "settings.modelApi.apiKeyEnvVar",
   modelTemperature: "settings.modelApi.temperature",
+  modelMaxTokens: "settings.modelApi.maxTokens",
   sourceEnabled: "settings.sourceIntelligence.enabled",
   sourceMaxSources: "settings.sourceIntelligence.maxSources",
   sourceDefaultDomains: "settings.sourceIntelligence.defaultDomains",
@@ -120,12 +127,14 @@ export const defaultSystemSettingRows = [
   { key: settingKeys.fxLastRefreshAt, value: "" },
   { key: settingKeys.fxLastRefreshStatus, value: "" },
   { key: settingKeys.marketChangeColorMode, value: defaultAppSettings.marketChange.colorMode },
+  { key: settingKeys.modelExecutionMode, value: defaultAppSettings.modelApi.executionMode },
   { key: settingKeys.modelProvider, value: defaultAppSettings.modelApi.provider },
   { key: settingKeys.modelBaseUrl, value: defaultAppSettings.modelApi.baseUrl },
   { key: settingKeys.modelModel, value: defaultAppSettings.modelApi.model },
   { key: settingKeys.modelApiKeyMode, value: defaultAppSettings.modelApi.apiKeyMode },
   { key: settingKeys.modelApiKeyEnvVar, value: defaultAppSettings.modelApi.apiKeyEnvVar },
   { key: settingKeys.modelTemperature, value: String(defaultAppSettings.modelApi.temperature) },
+  { key: settingKeys.modelMaxTokens, value: String(defaultAppSettings.modelApi.maxTokens) },
   { key: settingKeys.sourceEnabled, value: String(defaultAppSettings.sourceIntelligence.enabled) },
   { key: settingKeys.sourceMaxSources, value: String(defaultAppSettings.sourceIntelligence.maxSources) },
   { key: settingKeys.sourceDefaultDomains, value: JSON.stringify(defaultAppSettings.sourceIntelligence.defaultDomains) },
@@ -203,12 +212,14 @@ export function readAppSettings(database: DatabaseContext): AppSettings {
       colorMode: normalizeMarketChangeColorMode(stringSetting(settings, settingKeys.marketChangeColorMode, defaultAppSettings.marketChange.colorMode))
     },
     modelApi: {
+      executionMode: stringSetting(settings, settingKeys.modelExecutionMode, defaultAppSettings.modelApi.executionMode) as ModelExecutionMode,
       provider: stringSetting(settings, settingKeys.modelProvider, defaultAppSettings.modelApi.provider) as ModelApiProvider,
       baseUrl: stringSetting(settings, settingKeys.modelBaseUrl, defaultAppSettings.modelApi.baseUrl),
       model: stringSetting(settings, settingKeys.modelModel, defaultAppSettings.modelApi.model),
       apiKeyMode: stringSetting(settings, settingKeys.modelApiKeyMode, defaultAppSettings.modelApi.apiKeyMode) as ApiKeyMode,
       apiKeyEnvVar: stringSetting(settings, settingKeys.modelApiKeyEnvVar, defaultAppSettings.modelApi.apiKeyEnvVar),
-      temperature: numberSetting(settings, settingKeys.modelTemperature, defaultAppSettings.modelApi.temperature)
+      temperature: numberSetting(settings, settingKeys.modelTemperature, defaultAppSettings.modelApi.temperature),
+      maxTokens: numberSetting(settings, settingKeys.modelMaxTokens, defaultAppSettings.modelApi.maxTokens)
     },
     sourceIntelligence: {
       enabled: booleanSetting(settings, settingKeys.sourceEnabled, defaultAppSettings.sourceIntelligence.enabled),
@@ -270,12 +281,14 @@ export function updateAppSettings(database: DatabaseContext, patch: AppSettingsP
   upsertSetting(database, settingKeys.fxLastRefreshAt, optionalString(next.fx.lastRefreshAt));
   upsertSetting(database, settingKeys.fxLastRefreshStatus, optionalString(next.fx.lastRefreshStatus));
   upsertSetting(database, settingKeys.marketChangeColorMode, next.marketChange.colorMode);
+  upsertSetting(database, settingKeys.modelExecutionMode, next.modelApi.executionMode);
   upsertSetting(database, settingKeys.modelProvider, next.modelApi.provider);
   upsertSetting(database, settingKeys.modelBaseUrl, next.modelApi.baseUrl);
   upsertSetting(database, settingKeys.modelModel, next.modelApi.model);
   upsertSetting(database, settingKeys.modelApiKeyMode, next.modelApi.apiKeyMode);
   upsertSetting(database, settingKeys.modelApiKeyEnvVar, next.modelApi.apiKeyEnvVar);
   upsertSetting(database, settingKeys.modelTemperature, String(next.modelApi.temperature));
+  upsertSetting(database, settingKeys.modelMaxTokens, String(Math.max(1, next.modelApi.maxTokens)));
   upsertSetting(database, settingKeys.sourceEnabled, String(next.sourceIntelligence.enabled));
   upsertSetting(database, settingKeys.sourceMaxSources, String(Math.max(1, next.sourceIntelligence.maxSources)));
   upsertSetting(database, settingKeys.sourceDefaultDomains, JSON.stringify(next.sourceIntelligence.defaultDomains));

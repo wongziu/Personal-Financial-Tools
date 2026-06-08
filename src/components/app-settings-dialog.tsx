@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { RefreshCcwIcon, SaveIcon, SettingsIcon, SparklesIcon } from "lucide-react";
+import { RefreshCcwIcon, SaveIcon, SettingsIcon, SparklesIcon, TestTube2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAppSettings } from "@/components/app-settings-provider";
@@ -60,6 +60,7 @@ export function AppSettingsDialog() {
   const [settings, setSettings] = useState<AppSettings>(appSettings);
   const [isPending, startTransition] = useTransition();
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [modelTestStatus, setModelTestStatus] = useState<string | null>(null);
 
   const pairsText = useMemo(() => listToText(settings.fx.pairs), [settings.fx.pairs]);
   const domainsText = useMemo(() => listToText(settings.sourceIntelligence.defaultDomains), [settings.sourceIntelligence.defaultDomains]);
@@ -126,6 +127,27 @@ export function AppSettingsDialog() {
 
       setRefreshStatus(payload.message ?? "OK");
       toast.success(payload.message ?? t.formSaved);
+    });
+  };
+
+  const testModel = () => {
+    startTransition(async () => {
+      const response = await fetch("/api/model-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const payload = (await response.json()) as { result?: { message?: string; latencyMs?: number }; error?: string };
+      const message = payload.result?.message ?? payload.error ?? t.formError;
+
+      if (!response.ok) {
+        setModelTestStatus(message);
+        toast.error(message);
+        return;
+      }
+
+      const suffix = payload.result?.latencyMs === undefined ? "" : ` (${Math.round(payload.result.latencyMs)}ms)`;
+      setModelTestStatus(`${message}${suffix}`);
+      toast.success(localize(language, "模型连接成功", "Model connection succeeded"));
     });
   };
 
@@ -277,6 +299,31 @@ export function AppSettingsDialog() {
 
             <TabsContent value="model" className="mt-0 flex flex-col gap-3">
               <SettingRow
+                title={localize(language, "执行模式", "Execution Mode")}
+                description={localize(language, "参考 open-design 的配置方式：可在本地规则模式和模型 API 模式之间切换。", "Switch between local rule mode and model API mode, following the open-design execution configuration pattern.")}
+              >
+                <Select
+                  value={settings.modelApi.executionMode}
+                  onValueChange={(value) =>
+                    updateSettings((current) => ({
+                      ...current,
+                      modelApi: {
+                        ...current.modelApi,
+                        executionMode: value as AppSettings["modelApi"]["executionMode"]
+                      }
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label={localize(language, "执行模式", "Execution Mode")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="model">{localize(language, "模型 API", "Model API")}</SelectItem>
+                    <SelectItem value="local">{localize(language, "本地规则", "Local Rules")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              <SettingRow
                 title={localize(language, "模型服务", "Model Provider")}
                 description={localize(language, "支持 OpenAI-compatible Chat Completions；密钥默认从环境变量读取。", "Supports OpenAI-compatible Chat Completions; API keys are read from environment variables by default.")}
               >
@@ -302,6 +349,19 @@ export function AppSettingsDialog() {
               <SettingRow title="Temperature" description={localize(language, "信息抽取建议保持低温度，以减少格式波动。", "Use a low temperature for stable information extraction output.")}>
                 <Input aria-label="Temperature" type="number" step="0.1" min={0} max={1} value={settings.modelApi.temperature} onChange={(event) => updateSettings((current) => ({ ...current, modelApi: { ...current.modelApi, temperature: Number(event.target.value) || 0 } }))} />
               </SettingRow>
+              <SettingRow title="Max Tokens" description={localize(language, "限制单次模型响应长度，研究分析需要比抽取略宽。", "Limits one model response; research analysis needs a wider budget than extraction.")}>
+                <Input aria-label="Max Tokens" type="number" min={1} value={settings.modelApi.maxTokens} onChange={(event) => updateSettings((current) => ({ ...current, modelApi: { ...current.modelApi, maxTokens: Number(event.target.value) || 1600 } }))} />
+              </SettingRow>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3">
+                <div className="text-sm">
+                  <div className="font-medium">{localize(language, "模型连接测试", "Model Connection Test")}</div>
+                  <div className="text-xs text-muted-foreground">{modelTestStatus ?? localize(language, "保存配置后测试当前服务、模型和环境变量。", "Save settings, then test the current service, model, and environment variable.")}</div>
+                </div>
+                <Button variant="outline" onClick={testModel} disabled={isPending || settings.modelApi.executionMode !== "model"}>
+                  <TestTube2Icon data-icon="inline-start" />
+                  {localize(language, "测试模型连接", "Test Model")}
+                </Button>
+              </div>
             </TabsContent>
 
             <TabsContent value="source" className="mt-0 flex flex-col gap-3">
