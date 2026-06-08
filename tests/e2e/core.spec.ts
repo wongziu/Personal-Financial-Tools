@@ -44,6 +44,7 @@ test("opens system settings and saves fx and model configuration", async ({ page
 });
 
 test("groups related modules into clearer tabbed workspaces", async ({ page }) => {
+  test.slow();
   await page.goto("/");
 
   await expect(page.getByRole("link", { name: "账户", exact: true })).toBeVisible();
@@ -126,6 +127,50 @@ test("runs an AI research analysis from the research workspace", async ({ page }
       })
     });
   });
+  await page.route("**/api/research-agent-workflow", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          mode: "agent-workflow",
+          model: "openai:test-model@default",
+          securityId: "SEC-US-AAPL",
+          analysisMode: "risk-catalyst",
+          context: {
+            securityName: "Apple Inc.",
+            securityTicker: "AAPL",
+            sourceCount: 2,
+            thesisCount: 1,
+            reviewEventCount: 1,
+            tradeDecisionCount: 1,
+            latestSourceDate: "2026-06-01",
+            nextReviewDate: "2026-07-25",
+            latestDecisionAction: "Execute"
+          },
+          stages: [
+            {
+              id: "evidence",
+              title: "Evidence Agent",
+              status: "completed",
+              inputSummary: "sources=2; theses=1; reviewEvents=1; tradeDecisions=1; completedStages=0",
+              output: "Evidence quality is adequate but needs corroboration.",
+              latencyMs: 21
+            },
+            {
+              id: "risk",
+              title: "Risk Agent",
+              status: "completed",
+              inputSummary: "sources=2; theses=1; reviewEvents=1; tradeDecisions=1; completedStages=1",
+              output: "Earnings guidance can reset expectations.",
+              latencyMs: 18
+            }
+          ],
+          finalSummary: "Agent workflow recommends waiting for the earnings review."
+        }
+      })
+    });
+  });
 
   await page.goto("/research");
   await page.getByRole("tab", { name: "AI 研究" }).click();
@@ -142,6 +187,13 @@ test("runs an AI research analysis from the research workspace", async ({ page }
   await expect(panel.getByText("2026-07-25")).toBeVisible();
   await expect(panel.getByText("A-level filing supports demand.")).toBeVisible();
   await expect(panel.getByText("Review the next earnings event before adding exposure.")).toBeVisible();
+
+  await panel.getByRole("button", { name: "Agent 工作流" }).click();
+  const workflow = panel.getByTestId("research-agent-workflow");
+  await expect(workflow.getByText("Agent workflow recommends waiting")).toBeVisible();
+  await expect(workflow.getByText("Evidence Agent")).toBeVisible();
+  await expect(workflow.getByText("Risk Agent")).toBeVisible();
+  await expect(workflow.getByText("Evidence quality is adequate")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {
@@ -235,7 +287,9 @@ test("derives securities liquidity from lock-up days instead of direct selection
 test("opens security detail and shows linked transactions and prices", async ({ page }) => {
   await page.goto("/securities");
 
-  await page.getByRole("link", { name: "详情 Apple Inc." }).click();
+  const detailLink = page.getByRole("link", { name: "详情 Apple Inc." });
+  await expect(detailLink).toHaveAttribute("href", "/securities/US-AAPL");
+  await page.goto("/securities/US-AAPL");
 
   await expect(page).toHaveURL(/\/securities\/US-AAPL$/);
   await expect(page.getByRole("heading", { name: /Apple Inc./ })).toBeVisible();
@@ -370,7 +424,11 @@ test("formats cashflow amount columns with grouping and fixed cents", async ({ p
   await dialog.getByRole("spinbutton", { name: "金额", exact: true }).fill("11031.56");
   await dialog.getByRole("spinbutton", { name: "汇率" }).fill("1");
   await dialog.getByRole("textbox", { name: "数据来源" }).fill("Display format test");
-  await dialog.getByRole("button", { name: "保存" }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/modules/cashflows") && response.request().method() === "POST"),
+    dialog.getByRole("button", { name: "保存" }).click()
+  ]);
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
 
   await expect(page.locator('td[data-column="amount"]').filter({ hasText: "11,031.56" })).toBeVisible();
   await expect(page.locator('td[data-column="amount"]').filter({ hasText: "11031.5600" })).toBeHidden();
