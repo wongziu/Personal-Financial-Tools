@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Language } from "@/lib/i18n";
 import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
+import type { ResearchAgentWorkflowResult } from "@/lib/research-agent-workflow";
 import type { ResearchAiResult, ResearchAnalysisMode } from "@/lib/research-ai";
 
 function localize(language: Language, zh: string, en: string): string {
@@ -60,6 +61,7 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
   const [analysisMode, setAnalysisMode] = useState<ResearchAnalysisMode>("brief");
   const [question, setQuestion] = useState(localize(language, "总结当前研究状态，并给出下一步复核问题。", "Summarize the current research state and next review questions."));
   const [result, setResult] = useState<ResearchAiResult | null>(null);
+  const [workflow, setWorkflow] = useState<ResearchAgentWorkflowResult | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const runAnalysis = () => {
@@ -77,7 +79,28 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
       }
 
       setResult(payload.result);
+      setWorkflow(null);
       toast.success(localize(language, "AI 研究分析已生成", "AI research analysis generated"));
+    });
+  };
+
+  const runAgentWorkflow = () => {
+    startTransition(async () => {
+      const response = await fetch("/api/research-agent-workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ securityId, question, analysisMode })
+      });
+      const payload = (await response.json()) as { result?: ResearchAgentWorkflowResult; error?: string };
+
+      if (!response.ok || !payload.result) {
+        toast.error(payload.error ?? t.formError);
+        return;
+      }
+
+      setWorkflow(payload.result);
+      setResult(null);
+      toast.success(localize(language, "Agent 工作流已完成", "Agent workflow completed"));
     });
   };
 
@@ -141,11 +164,53 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
               onChange={(event) => setQuestion(event.target.value)}
             />
           </div>
-          <Button onClick={runAnalysis} disabled={isPending || !securityId || !question.trim()}>
-            <SparklesIcon data-icon="inline-start" />
-            {localize(language, "生成分析", "Generate Analysis")}
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button onClick={runAnalysis} disabled={isPending || !securityId || !question.trim()}>
+              <SparklesIcon data-icon="inline-start" />
+              {localize(language, "生成分析", "Generate Analysis")}
+            </Button>
+            <Button variant="outline" onClick={runAgentWorkflow} disabled={isPending || !securityId || !question.trim()}>
+              <BrainCircuitIcon data-icon="inline-start" />
+              {localize(language, "Agent 工作流", "Agent Workflow")}
+            </Button>
+          </div>
         </div>
+
+        {workflow ? (
+          <div className="grid gap-3 rounded-md border bg-background p-3" data-testid="research-agent-workflow">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">{localize(language, "Agent 工作流", "Agent Workflow")}</div>
+                <div className="text-sm">{workflow.finalSummary}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">{localize(language, analysisModeLabels[workflow.analysisMode].zh, analysisModeLabels[workflow.analysisMode].en)}</Badge>
+                <Badge variant="outline">{workflow.model}</Badge>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {contextMetric(localize(language, "信息来源", "Sources"), workflow.context.sourceCount)}
+              {contextMetric(localize(language, "投资论点", "Theses"), workflow.context.thesisCount)}
+              {contextMetric(localize(language, "复核事件", "Review Events"), workflow.context.reviewEventCount)}
+              {contextMetric(localize(language, "交易决策", "Trade Decisions"), workflow.context.tradeDecisionCount)}
+            </div>
+            <div className="grid gap-2">
+              {workflow.stages.map((stage) => (
+                <div key={stage.id} className="rounded-md border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-medium">{stage.title}</div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={stage.status === "completed" ? "secondary" : "destructive"}>{stage.status}</Badge>
+                      <span className="text-xs text-muted-foreground">{Math.round(stage.latencyMs)}ms</span>
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{stage.inputSummary}</div>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-md bg-background p-2 text-xs leading-relaxed">{stage.output}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {result ? (
           <div className="grid gap-3 rounded-md border bg-background p-3">
