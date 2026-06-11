@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { shouldSeedDemoData } from "@/lib/app-db";
 import { createDatabase, initializeDatabase } from "@/lib/db/client";
-import { seedDemoData } from "@/lib/db/seed";
+import { seedDemoData, seedResearchDefaults } from "@/lib/db/seed";
 import { buildModuleReferenceOptions, findModuleDefinition, insertModuleRecord, listModuleRows, updateModuleRecord } from "@/lib/modules";
 import { createTradeDecisionWithRisk, getAccountCalendarData, getDashboardData, listAllExportData } from "@/lib/services";
 
@@ -22,6 +22,30 @@ describe("database integration", () => {
       .run("ACC-REAL-001", "真实机构", "cash", "A-Share", "CNY", 0, 1, "2026-06-03", "Manual", null);
 
     expect(shouldSeedDemoData(database)).toBe(false);
+  });
+
+  test("backfills default research strategy without demo accounts for existing databases", () => {
+    const database = createDatabase(":memory:");
+    database.sqlite
+      .prepare(
+        `INSERT INTO accounts (
+          id, institution_name, account_type, market, currency,
+          allow_margin_or_derivatives, include_in_net_worth,
+          initial_entry_date, data_update_method, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run("ACC-REAL-001", "真实机构", "cash", "A-Share", "CNY", 0, 1, "2026-06-03", "Manual", null);
+
+    expect(shouldSeedDemoData(database)).toBe(false);
+    seedResearchDefaults(database);
+
+    const accountCount = database.sqlite.prepare("SELECT COUNT(*) AS count FROM accounts").get() as { count: number };
+    const strategyCount = database.sqlite.prepare("SELECT COUNT(*) AS count FROM strategies").get() as { count: number };
+    const versionCount = database.sqlite.prepare("SELECT COUNT(*) AS count FROM strategy_versions").get() as { count: number };
+
+    expect(accountCount.count).toBe(1);
+    expect(strategyCount.count).toBe(1);
+    expect(versionCount.count).toBe(1);
   });
 
   test("seeds demo data idempotently", () => {

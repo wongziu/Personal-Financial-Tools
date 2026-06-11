@@ -1,6 +1,6 @@
 import { getDatabase } from "@/lib/db/client";
 import type { DatabaseContext } from "@/lib/db/client";
-import { seedDemoData } from "@/lib/db/seed";
+import { seedDemoData, seedResearchDefaults } from "@/lib/db/seed";
 
 export function shouldSeedDemoData(database: DatabaseContext): boolean {
   const row = database.sqlite.prepare("SELECT COUNT(*) AS count FROM accounts").get() as { count: number };
@@ -12,5 +12,6 @@ export function getSeededDatabase() {
   if (shouldSeedDemoData(database)) {
     seedDemoData(database);
   }
+  seedResearchDefaults(database);
   return database;
 }
