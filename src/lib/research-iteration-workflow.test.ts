@@ -37,6 +37,62 @@ describe("research AI iteration workflow", () => {
     expect(candidateCount.count).toBe(result.candidates.length);
   });
 
+  test("limits strategy workflow candidates to the selected market", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    database.sqlite
+      .prepare(
+        `INSERT INTO securities (
+          id, account_id, name, ticker, asset_type, market, currency,
+          industry_level_1, industry_level_2, risk_theme_tags, liquidity_level,
+          investment_status, benchmark, fee_note, complexity
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "HK-00700",
+        "ACC-US-001",
+        "Tencent Holdings",
+        "00700",
+        "Stock",
+        "HK",
+        "HKD",
+        "CommunicationServices",
+        "InternetPlatforms",
+        JSON.stringify(["China Internet"]),
+        "High",
+        "Allowed",
+        "Hang Seng Tech",
+        "N/A",
+        "Simple"
+      );
+
+    const usResult = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run the strategy against US securities."
+    });
+    const hkResult = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "HK",
+      question: "Run the strategy against HK securities."
+    });
+    const aShareResult = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "A-Share",
+      question: "Run the strategy against A-share securities."
+    });
+
+    expect(usResult.market).toBe("US");
+    expect(usResult.candidates.map((candidate) => candidate.securityId)).toEqual(["US-AAPL"]);
+    expect(hkResult.market).toBe("HK");
+    expect(hkResult.candidates.map((candidate) => candidate.securityId)).toEqual(["HK-00700"]);
+    expect(aShareResult.market).toBe("A-Share");
+    expect(aShareResult.candidates.map((candidate) => candidate.securityId)).toEqual(["CN-510300"]);
+  });
+
   test("runs a target diagnosis workflow for a selected security", () => {
     const database = createDatabase(":memory:");
     seedDemoData(database);

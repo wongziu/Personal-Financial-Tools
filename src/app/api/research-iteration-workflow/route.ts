@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSeededDatabase } from "@/lib/app-db";
-import { runResearchIterationWorkflow, type ResearchIterationTriggerType } from "@/lib/research-iteration-workflow";
+import {
+  normalizeResearchIterationMarket,
+  runResearchIterationWorkflow,
+  type ResearchIterationTriggerType
+} from "@/lib/research-iteration-workflow";
 
 const triggerTypes = ["strategy-run", "target-diagnosis", "review-session"] as const;
 
@@ -16,12 +20,14 @@ export async function POST(request: Request) {
       triggerType?: string;
       strategyId?: string;
       securityId?: string;
+      market?: string;
       question?: string;
     };
     const result = runResearchIterationWorkflow(getSeededDatabase(), {
       triggerType: normalizeTriggerType(body.triggerType),
       strategyId: body.strategyId,
       securityId: body.securityId,
+      market: normalizeResearchIterationMarket(body.market),
       question: body.question
     });
 

@@ -96,7 +96,9 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
 });
 
 test("runs AI self-directed stock picking from the research workspace", async ({ page }) => {
+  const requests: Array<Record<string, unknown>> = [];
   await page.route("**/api/research-iteration-workflow", async (route) => {
+    requests.push(route.request().postDataJSON() as Record<string, unknown>);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -143,7 +145,17 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   const panel = page.getByTestId("ai-stock-picks-panel");
 
   await expect(panel.getByText("AI 自驱选股")).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "选股市场" })).toBeVisible();
+  await panel.getByRole("combobox", { name: "选股市场" }).click();
+  await page.getByRole("option", { name: "美股" }).click();
+  await panel.getByRole("combobox", { name: "参考标的" }).click();
+  await page.getByRole("option", { name: /Apple Inc\./ }).click();
+  await expect(panel.getByRole("button", { name: "清空参考标的" })).toBeVisible();
+  await panel.getByRole("button", { name: "清空参考标的" }).click();
+  await expect(panel.getByRole("combobox", { name: "参考标的" })).toContainText("不限定标的");
   await panel.getByRole("button", { name: "立即更新选股" }).click();
+  expect(requests[0]).toMatchObject({ triggerType: "strategy-run", market: "US" });
+  expect(requests[0]).not.toHaveProperty("securityId");
   const result = panel.getByTestId("ai-stock-picks-result");
   await expect(result.getByText("策略「核心成长观察策略」完成本地候选筛选")).toBeVisible();
   await expect(result.getByText("1. Apple Inc.")).toBeVisible();

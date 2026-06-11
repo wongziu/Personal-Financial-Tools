@@ -2,11 +2,15 @@ import type { DatabaseContext } from "@/lib/db/client";
 import { nextBusinessId, type Row } from "@/lib/services";
 
 export type ResearchIterationTriggerType = "strategy-run" | "target-diagnosis" | "review-session";
+export type ResearchIterationMarket = "all" | "A-Share" | "HK" | "US";
+
+const researchIterationMarkets: ResearchIterationMarket[] = ["all", "A-Share", "HK", "US"];
 
 export interface ResearchIterationWorkflowInput {
   triggerType: ResearchIterationTriggerType;
   strategyId?: string;
   securityId?: string;
+  market?: ResearchIterationMarket;
   question?: string;
 }
 
@@ -47,6 +51,7 @@ export interface ResearchIterationWorkflowResult {
   strategyVersionId?: string;
   strategyRunId?: string;
   securityId?: string;
+  market?: ResearchIterationMarket;
   reviewSessionId?: string;
   finalSummary: string;
   stages: ResearchIterationStage[];
@@ -90,6 +95,20 @@ function jsonText(items: string[]): string {
   return JSON.stringify(items);
 }
 
+export function normalizeResearchIterationMarket(value: unknown): ResearchIterationMarket {
+  return researchIterationMarkets.includes(value as ResearchIterationMarket) ? value as ResearchIterationMarket : "all";
+}
+
+function marketLabel(market: ResearchIterationMarket): string {
+  const labels: Record<ResearchIterationMarket, string> = {
+    all: "全部市场",
+    "A-Share": "A股",
+    HK: "港股",
+    US: "美股"
+  };
+  return labels[market];
+}
+
 function firstRow(database: DatabaseContext, sql: string, ...params: unknown[]): Row | undefined {
   return database.sqlite.prepare(sql).get(...params) as Row | undefined;
 }
@@ -128,6 +147,14 @@ function thesisRows(database: DatabaseContext, securityId: string): Row[] {
 
 function decisionRows(database: DatabaseContext, securityId: string): Row[] {
   return allRows(database, "SELECT * FROM trade_decisions WHERE security_id = ? ORDER BY rowid DESC", securityId);
+}
+
+function securitiesForMarket(database: DatabaseContext, market: ResearchIterationMarket): Row[] {
+  if (market === "all") {
+    return allRows(database, "SELECT * FROM securities ORDER BY rowid DESC");
+  }
+
+  return allRows(database, "SELECT * FROM securities WHERE market = ? ORDER BY rowid DESC", market);
 }
 
 function insertRun(database: DatabaseContext, input: {
@@ -238,17 +265,19 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
   const strategyId = String(strategy.id);
   const strategyVersion = latestStrategyVersion(database, strategyId);
   const strategyVersionId = strategyVersion ? String(strategyVersion.id) : undefined;
-  const securities = allRows(database, "SELECT * FROM securities ORDER BY rowid DESC");
+  const market = normalizeResearchIterationMarket(input.market);
+  const marketName = marketLabel(market);
+  const securities = securitiesForMarket(database, market);
   const rawCandidates = securities
     .map((security, index) => buildCandidate(database, security, index))
     .sort((left, right) => right.fitScore - left.fitScore);
-  const finalSummary = `策略「${String(strategy.name)}」完成本地候选筛选：${rawCandidates.length} 个候选，${rawCandidates.filter((candidate) => candidate.recommendation === "DraftDecision").length} 个可进入决策草案前检查。`;
+  const finalSummary = `策略「${String(strategy.name)}」完成${marketName}候选筛选：${rawCandidates.length} 个候选，${rawCandidates.filter((candidate) => candidate.recommendation === "DraftDecision").length} 个可进入决策草案前检查。`;
   const stages: ResearchIterationStage[] = [
     {
       id: "constraint",
       title: "约束 Agent",
       status: "completed",
-      inputSummary: `strategy=${strategyId}; version=${strategyVersionId ?? "N/A"}`,
+      inputSummary: `strategy=${strategyId}; version=${strategyVersionId ?? "N/A"}; market=${market}`,
       output: `风险预算：${String(strategy.risk_budget)}；复盘频率：${String(strategy.review_cadence)}。`,
       latencyMs: 0
     },
@@ -256,8 +285,8 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       id: "data-coverage",
       title: "数据覆盖 Agent",
       status: "completed",
-      inputSummary: `securities=${securities.length}`,
-      output: `候选池包含 ${securities.length} 个标的；缺失证据会写入候选卡片，不用模型输出替代事实。`,
+      inputSummary: `market=${market}; securities=${securities.length}`,
+      output: `${marketName}候选池包含 ${securities.length} 个标的；缺失证据会写入候选卡片，不用模型输出替代事实。`,
       latencyMs: 0
     },
     {
@@ -281,7 +310,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       title: "反证 Critic",
       status: "completed",
       inputSummary: `question=${input.question ?? ""}`,
-      output: "本轮只使用本地数据；缺少最近复盘和外部来源的候选不能直接升级为交易建议。",
+      output: `本轮只使用本地数据，并限定在${marketName}；缺少最近复盘和外部来源的候选不能直接升级为交易建议。`,
       latencyMs: 0
     }
   ];
@@ -289,6 +318,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
     triggerType: "strategy-run",
     strategyId,
     strategyVersionId,
+    securityId: input.securityId,
     question: input.question ?? "Run strategy workflow.",
     finalSummary
   });
@@ -299,7 +329,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
         id, strategy_id, strategy_version_id, run_date, universe_summary, status, final_summary, created_agent_run_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(strategyRunId, strategyId, strategyVersionId ?? null, today(), `本地候选池 ${securities.length} 个标的`, "Completed", finalSummary, runId);
+    .run(strategyRunId, strategyId, strategyVersionId ?? null, today(), `${marketName}候选池 ${securities.length} 个标的`, "Completed", finalSummary, runId);
 
   const candidateStatement = database.sqlite.prepare(
     `INSERT INTO strategy_candidates (
@@ -332,6 +362,8 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
     strategyId,
     strategyVersionId,
     strategyRunId,
+    securityId: input.securityId,
+    market,
     finalSummary,
     stages,
     candidates,

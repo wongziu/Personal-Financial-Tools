@@ -21,12 +21,12 @@ export type WorkspaceTab =
 
 function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] {
   const securities = database.sqlite
-    .prepare("SELECT id, name, ticker FROM securities ORDER BY rowid DESC")
+    .prepare("SELECT id, name, ticker, market FROM securities ORDER BY rowid DESC")
     .all() as Row[];
   return securities.map((row) => ({
     value: String(row.id),
     label: [row.name, row.ticker].filter(Boolean).map(String).join(" · "),
-    metadata: {}
+    metadata: { market: row.market === null || row.market === undefined ? "" : String(row.market) }
   }));
 }
 
