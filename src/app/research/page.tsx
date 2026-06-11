@@ -4,11 +4,9 @@ import { getSeededDatabase } from "@/lib/app-db";
 export const dynamic = "force-dynamic";
 
 const tabs: WorkspaceTab[] = [
-  { id: "sources", labelZh: "信息来源", labelEn: "Sources", moduleId: "sources" },
-  { id: "theses", labelZh: "投资论点", labelEn: "Theses", moduleId: "theses" },
-  { id: "review-events", labelZh: "复核日历", labelEn: "Review Events", moduleId: "review-events" },
-  { id: "trade-decisions", labelZh: "交易决策", labelEn: "Trade Decisions", special: "trade-decisions" },
-  { id: "research-ai", labelZh: "AI 研究", labelEn: "AI Research", special: "research-ai" }
+  { id: "information-analysis", labelZh: "信息分析", labelEn: "Information Analysis", special: "information-analysis" },
+  { id: "ai-picks", labelZh: "AI 自驱选股", labelEn: "AI Stock Picks", special: "ai-picks" },
+  { id: "my-decisions", labelZh: "我的决策", labelEn: "My Decisions", special: "decision-center" }
 ];
 
 export default function ResearchWorkspacePage() {
@@ -16,11 +14,11 @@ export default function ResearchWorkspacePage() {
     <ModuleWorkspace
       titleZh="研究工作台"
       titleEn="Research Workspace"
-      descriptionZh="把信息来源、投资论点、复核事件和交易决策串成研究到执行的闭环。"
-      descriptionEn="Connect sources, theses, review events, and trade decisions from research to execution."
+      descriptionZh="把外部信息整理成观点，用 AI 自驱选股发现机会，再收束成可执行决策。"
+      descriptionEn="Turn external information into opinions, use AI stock picking to find opportunities, then convert them into actionable decisions."
       database={getSeededDatabase()}
       tabs={tabs}
-      defaultTab="sources"
+      defaultTab="information-analysis"
     />
   );
 }

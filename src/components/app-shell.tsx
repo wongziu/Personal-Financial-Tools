@@ -107,12 +107,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       <div className="md:pl-64">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/95 px-4 backdrop-blur md:px-6">
-          <div className="min-w-0">
+        <header className="sticky top-0 z-10 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:flex-nowrap md:px-6">
+          <div className="min-w-0 w-full md:w-auto md:flex-1">
             <div className="truncate text-sm font-medium">{t.appName}</div>
-            <div className="text-xs text-muted-foreground">V1 Trading Loop</div>
+            <div className="whitespace-nowrap text-xs text-muted-foreground">V1 Trading Loop</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
             <div className="flex items-center gap-2">
               <GlobeIcon className="size-4 text-muted-foreground" />
               <Select value={language} onValueChange={(value) => setLanguage(value as Language)}>

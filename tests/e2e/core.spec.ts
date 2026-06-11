@@ -88,112 +88,67 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
 
   await page.goto("/research");
   await expect(page.getByRole("heading", { name: "研究工作台" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "信息分析" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "AI 自驱选股" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "我的决策" })).toBeVisible();
   await expect(page.getByTestId("source-intelligence-panel")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "AI 研究" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "策略版本" })).toHaveCount(0);
 });
 
-test("runs an AI research analysis from the research workspace", async ({ page }) => {
-  await page.route("**/api/research-ai", async (route) => {
+test("runs AI self-directed stock picking from the research workspace", async ({ page }) => {
+  await page.route("**/api/research-iteration-workflow", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         result: {
-          mode: "model",
-          analysisMode: "risk-catalyst",
-          model: "openai:test-model@default",
-          securityId: "SEC-US-AAPL",
-          context: {
-            securityName: "Apple Inc.",
-            securityTicker: "AAPL",
-            sourceCount: 2,
-            thesisCount: 1,
-            reviewEventCount: 1,
-            tradeDecisionCount: 1,
-            latestSourceDate: "2026-06-01",
-            nextReviewDate: "2026-07-25",
-            latestDecisionAction: "Execute"
-          },
-          prompt: "mock prompt",
-          analysis: {
-            summary: "Apple evidence is supportive, but earnings risk remains.",
-            evidenceHighlights: ["A-level filing supports demand."],
-            thesisImpact: "Supports the active thesis.",
-            riskFlags: ["Earnings guidance can reset expectations."],
-            suggestedQuestions: ["What would invalidate the thesis?"],
-            nextActions: ["Review the next earnings event before adding exposure."]
-          }
-        }
-      })
-    });
-  });
-  await page.route("**/api/research-agent-workflow", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: {
-          mode: "agent-workflow",
-          model: "openai:test-model@default",
-          securityId: "SEC-US-AAPL",
-          analysisMode: "risk-catalyst",
-          context: {
-            securityName: "Apple Inc.",
-            securityTicker: "AAPL",
-            sourceCount: 2,
-            thesisCount: 1,
-            reviewEventCount: 1,
-            tradeDecisionCount: 1,
-            latestSourceDate: "2026-06-01",
-            nextReviewDate: "2026-07-25",
-            latestDecisionAction: "Execute"
-          },
+          triggerType: "strategy-run",
+          runId: "AIRUN-2026-001",
+          strategyId: "STRAT-CORE-GROWTH",
+          strategyVersionId: "STRAT-CORE-GROWTH-V1",
+          strategyRunId: "SRUN-2026-001",
+          finalSummary: "策略「核心成长观察策略」完成本地候选筛选。",
           stages: [
             {
-              id: "evidence",
-              title: "Evidence Agent",
+              id: "screening",
+              title: "筛选 Agent",
               status: "completed",
-              inputSummary: "sources=2; theses=1; reviewEvents=1; tradeDecisions=1; completedStages=0",
-              output: "Evidence quality is adequate but needs corroboration.",
-              latencyMs: 21
-            },
-            {
-              id: "risk",
-              title: "Risk Agent",
-              status: "completed",
-              inputSummary: "sources=2; theses=1; reviewEvents=1; tradeDecisions=1; completedStages=1",
-              output: "Earnings guidance can reset expectations.",
-              latencyMs: 18
+              inputSummary: "candidates=2",
+              output: "Apple Inc. enters the candidate review queue.",
+              latencyMs: 0
             }
           ],
-          finalSummary: "Agent workflow recommends waiting for the earnings review."
+          candidates: [
+            {
+              id: "CAND-2026-001",
+              securityId: "US-AAPL",
+              securityName: "Apple Inc.",
+              rank: 1,
+              fitScore: 80,
+              recommendation: "DraftDecision",
+              matchedRules: ["证据数=2"],
+              missingEvidence: ["缺少最近一次结构化复盘结论"],
+              riskFlags: ["风险主题：AI Capex"],
+              nextAction: "生成交易决策草案前先确认仓位上限。"
+            }
+          ],
+          reviewFindings: []
         }
       })
     });
   });
 
   await page.goto("/research");
-  await page.getByRole("tab", { name: "AI 研究" }).click();
-  const panel = page.getByTestId("research-ai-panel");
+  await page.getByRole("tab", { name: "AI 自驱选股" }).click();
+  const panel = page.getByTestId("ai-stock-picks-panel");
 
-  await expect(panel.getByText("AI 研究分析")).toBeVisible();
-  await panel.getByRole("combobox", { name: "分析模式" }).click();
-  await page.getByRole("option", { name: "风险催化" }).click();
-  await panel.getByRole("textbox", { name: "研究问题" }).fill("Should I add exposure before earnings?");
-  await panel.getByRole("button", { name: "生成分析" }).click();
-
-  await expect(panel.getByText("Apple evidence is supportive")).toBeVisible();
-  await expect(panel.getByTestId("research-ai-mode-badge")).toHaveText("风险催化");
-  await expect(panel.getByText("2026-07-25")).toBeVisible();
-  await expect(panel.getByText("A-level filing supports demand.")).toBeVisible();
-  await expect(panel.getByText("Review the next earnings event before adding exposure.")).toBeVisible();
-
-  await panel.getByRole("button", { name: "Agent 工作流" }).click();
-  const workflow = panel.getByTestId("research-agent-workflow");
-  await expect(workflow.getByText("Agent workflow recommends waiting")).toBeVisible();
-  await expect(workflow.getByText("Evidence Agent")).toBeVisible();
-  await expect(workflow.getByText("Risk Agent")).toBeVisible();
-  await expect(workflow.getByText("Evidence quality is adequate")).toBeVisible();
+  await expect(panel.getByText("AI 自驱选股")).toBeVisible();
+  await panel.getByRole("button", { name: "立即更新选股" }).click();
+  const result = panel.getByTestId("ai-stock-picks-result");
+  await expect(result.getByText("策略「核心成长观察策略」完成本地候选筛选")).toBeVisible();
+  await expect(result.getByText("1. Apple Inc.")).toBeVisible();
+  await expect(result.getByText("可生成买入草案")).toBeVisible();
+  await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {

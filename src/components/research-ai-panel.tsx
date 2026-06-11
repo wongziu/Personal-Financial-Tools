@@ -15,6 +15,7 @@ import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
 import type { ResearchAgentWorkflowResult } from "@/lib/research-agent-workflow";
 import type { ResearchAiResult, ResearchAnalysisMode } from "@/lib/research-ai";
+import type { ResearchIterationTriggerType, ResearchIterationWorkflowResult } from "@/lib/research-iteration-workflow";
 
 function localize(language: Language, zh: string, en: string): string {
   return language === "en-US" ? en : translateText(zh, language);
@@ -46,6 +47,12 @@ const analysisModeLabels: Record<ResearchAnalysisMode, { zh: string; en: string 
   "decision-memo": { zh: "决策备忘", en: "Decision Memo" }
 };
 
+const iterationTriggerLabels: Record<ResearchIterationTriggerType, { zh: string; en: string }> = {
+  "strategy-run": { zh: "策略运行", en: "Strategy Run" },
+  "target-diagnosis": { zh: "标的诊断", en: "Target Diagnosis" },
+  "review-session": { zh: "复盘会话", en: "Review Session" }
+};
+
 function contextMetric(label: string, value: string | number | null) {
   return (
     <div className="rounded-md border bg-muted/30 px-3 py-2">
@@ -55,13 +62,16 @@ function contextMetric(label: string, value: string | number | null) {
   );
 }
 
-export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] }) {
+export function ResearchAiPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
   const { language, t } = useLanguage();
   const [securityId, setSecurityId] = useState(securities[0]?.value ?? "");
+  const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
   const [analysisMode, setAnalysisMode] = useState<ResearchAnalysisMode>("brief");
+  const [iterationTriggerType, setIterationTriggerType] = useState<ResearchIterationTriggerType>("strategy-run");
   const [question, setQuestion] = useState(localize(language, "总结当前研究状态，并给出下一步复核问题。", "Summarize the current research state and next review questions."));
   const [result, setResult] = useState<ResearchAiResult | null>(null);
   const [workflow, setWorkflow] = useState<ResearchAgentWorkflowResult | null>(null);
+  const [iterationResult, setIterationResult] = useState<ResearchIterationWorkflowResult | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const runAnalysis = () => {
@@ -80,6 +90,7 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
 
       setResult(payload.result);
       setWorkflow(null);
+      setIterationResult(null);
       toast.success(localize(language, "AI 研究分析已生成", "AI research analysis generated"));
     });
   };
@@ -100,7 +111,34 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
 
       setWorkflow(payload.result);
       setResult(null);
+      setIterationResult(null);
       toast.success(localize(language, "Agent 工作流已完成", "Agent workflow completed"));
+    });
+  };
+
+  const runIterationWorkflow = () => {
+    startTransition(async () => {
+      const response = await fetch("/api/research-iteration-workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          triggerType: iterationTriggerType,
+          strategyId,
+          securityId,
+          question
+        })
+      });
+      const payload = (await response.json()) as { result?: ResearchIterationWorkflowResult; error?: string };
+
+      if (!response.ok || !payload.result) {
+        toast.error(payload.error ?? t.formError);
+        return;
+      }
+
+      setIterationResult(payload.result);
+      setWorkflow(null);
+      setResult(null);
+      toast.success(localize(language, "迭代工作流已完成", "Iteration workflow completed"));
     });
   };
 
@@ -124,7 +162,22 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
         ) : null}
       </CardHeader>
       <CardContent className="grid gap-3">
-        <div className="grid gap-3 md:grid-cols-[220px_220px_1fr_auto] md:items-end">
+        <div className="grid gap-3 md:grid-cols-[180px_180px_220px_1fr_auto] md:items-end">
+          <div className="grid gap-1.5">
+            <FieldLabel label={localize(language, "迭代入口", "Iteration Entry")} help="" />
+            <Select value={iterationTriggerType} onValueChange={(value) => setIterationTriggerType(value as ResearchIterationTriggerType)}>
+              <SelectTrigger aria-label={localize(language, "迭代入口", "Iteration Entry")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(iterationTriggerLabels) as ResearchIterationTriggerType[]).map((triggerType) => (
+                  <SelectItem key={triggerType} value={triggerType}>
+                    {localize(language, iterationTriggerLabels[triggerType].zh, iterationTriggerLabels[triggerType].en)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "分析模式", "Analysis Mode")} help="" />
             <Select value={analysisMode} onValueChange={(value) => setAnalysisMode(value as ResearchAnalysisMode)}>
@@ -155,6 +208,21 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
               </SelectContent>
             </Select>
           </div>
+          <div className="grid gap-1.5 md:col-span-2 lg:col-span-1">
+            <FieldLabel label={localize(language, "分析策略", "Strategy")} help="" />
+            <Select value={strategyId} onValueChange={setStrategyId}>
+              <SelectTrigger aria-label={localize(language, "分析策略", "Strategy")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {strategies.map((strategy) => (
+                  <SelectItem key={strategy.value} value={strategy.value}>
+                    {strategy.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "研究问题", "Research Question")} help="" />
             <Textarea
@@ -173,8 +241,74 @@ export function ResearchAiPanel({ securities }: { securities: ReferenceOption[] 
               <BrainCircuitIcon data-icon="inline-start" />
               {localize(language, "Agent 工作流", "Agent Workflow")}
             </Button>
+            <Button variant="outline" onClick={runIterationWorkflow} disabled={isPending || !question.trim() || (iterationTriggerType !== "review-session" && !securityId) || (iterationTriggerType === "strategy-run" && !strategyId)}>
+              <BrainCircuitIcon data-icon="inline-start" />
+              {localize(language, "运行迭代工作流", "Run Iteration")}
+            </Button>
           </div>
         </div>
+
+        {iterationResult ? (
+          <div className="grid gap-3 rounded-md border bg-background p-3" data-testid="research-iteration-workflow">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">{localize(language, "迭代工作流", "Iteration Workflow")}</div>
+                <div className="text-sm">{iterationResult.finalSummary}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">{localize(language, iterationTriggerLabels[iterationResult.triggerType].zh, iterationTriggerLabels[iterationResult.triggerType].en)}</Badge>
+                <Badge variant="outline">{iterationResult.runId}</Badge>
+                {iterationResult.strategyRunId ? <Badge variant="outline">{iterationResult.strategyRunId}</Badge> : null}
+                {iterationResult.reviewSessionId ? <Badge variant="outline">{iterationResult.reviewSessionId}</Badge> : null}
+              </div>
+            </div>
+            {iterationResult.candidates.length > 0 ? (
+              <div className="grid gap-2">
+                <div className="text-xs font-medium text-muted-foreground">{localize(language, "候选卡片", "Candidate Cards")}</div>
+                {iterationResult.candidates.map((candidate) => (
+                  <div key={candidate.id} className="rounded-md border bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-medium">{candidate.rank}. {candidate.securityName}</div>
+                      <Badge variant="secondary">{candidate.fitScore}</Badge>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">{candidate.nextAction}</div>
+                    <div className="mt-2 grid gap-1 text-xs">
+                      <div>{localize(language, "缺失证据", "Missing Evidence")}: {candidate.missingEvidence.join("；")}</div>
+                      <div>{localize(language, "风险标记", "Risk Flags")}: {candidate.riskFlags.join("；") || "N/A"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {iterationResult.reviewFindings.length > 0 ? (
+              <div className="grid gap-2">
+                <div className="text-xs font-medium text-muted-foreground">{localize(language, "复盘发现", "Review Findings")}</div>
+                {iterationResult.reviewFindings.map((finding) => (
+                  <div key={finding.id} className="rounded-md border bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-medium">{finding.findingType}</div>
+                      <Badge variant="outline">{finding.severity}</Badge>
+                    </div>
+                    <div className="mt-1 text-sm">{finding.finding}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{finding.nextAction}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="grid gap-2">
+              {iterationResult.stages.map((stage) => (
+                <div key={stage.id} className="rounded-md border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm font-medium">{stage.title}</div>
+                    <Badge variant="secondary">{stage.status}</Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{stage.inputSummary}</div>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-md bg-background p-2 text-xs leading-relaxed">{stage.output}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {workflow ? (
           <div className="grid gap-3 rounded-md border bg-background p-3" data-testid="research-agent-workflow">

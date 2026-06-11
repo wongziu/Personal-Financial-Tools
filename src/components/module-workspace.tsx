@@ -2,6 +2,7 @@ import { AccountCalendarPage } from "@/components/account-calendar-page";
 import { ExportPage } from "@/components/export-page";
 import { ModulePage } from "@/components/module-page";
 import { ResearchAiPanel } from "@/components/research-ai-panel";
+import { AiStockPicksPage, DecisionCenterPanel, InformationAnalysisPanel } from "@/components/research-workbench-panels";
 import { TradeDecisionsPage, type TradeDecisionReferenceOptions } from "@/components/trade-decisions-page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DatabaseContext } from "@/lib/db/client";
@@ -11,7 +12,12 @@ import { getAccountCalendarData, getPriceEntrySecurities, type Row } from "@/lib
 
 export type WorkspaceTab =
   | { id: string; labelZh: string; labelEn: string; moduleId: string }
-  | { id: string; labelZh: string; labelEn: string; special: "account-calendar" | "trade-decisions" | "research-ai" | "export" };
+  | {
+      id: string;
+      labelZh: string;
+      labelEn: string;
+      special: "account-calendar" | "trade-decisions" | "research-ai" | "export" | "information-analysis" | "ai-picks" | "decision-center";
+    };
 
 function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] {
   const securities = database.sqlite
@@ -20,6 +26,17 @@ function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] 
   return securities.map((row) => ({
     value: String(row.id),
     label: [row.name, row.ticker].filter(Boolean).map(String).join(" · "),
+    metadata: {}
+  }));
+}
+
+function strategyReferenceOptions(database: DatabaseContext): ReferenceOption[] {
+  const strategies = database.sqlite
+    .prepare("SELECT id, name, status FROM strategies ORDER BY rowid DESC")
+    .all() as Row[];
+  return strategies.map((row) => ({
+    value: String(row.id),
+    label: [row.name, row.status].filter(Boolean).map(String).join(" · "),
     metadata: {}
   }));
 }
@@ -64,7 +81,28 @@ function renderTabContent(database: DatabaseContext, tab: WorkspaceTab) {
       return <TradeDecisionsPage rows={rows} referenceOptions={tradeDecisionReferenceOptions(database)} />;
     }
     if (tab.special === "research-ai") {
-      return <ResearchAiPanel securities={securityReferenceOptions(database)} />;
+      return <ResearchAiPanel securities={securityReferenceOptions(database)} strategies={strategyReferenceOptions(database)} />;
+    }
+    if (tab.special === "information-analysis") {
+      return (
+        <InformationAnalysisPanel
+          securities={securityReferenceOptions(database)}
+          sources={database.sqlite.prepare("SELECT * FROM information_sources ORDER BY information_date DESC, rowid DESC").all() as Row[]}
+          theses={database.sqlite.prepare("SELECT * FROM theses ORDER BY rowid DESC").all() as Row[]}
+        />
+      );
+    }
+    if (tab.special === "ai-picks") {
+      return <AiStockPicksPage securities={securityReferenceOptions(database)} strategies={strategyReferenceOptions(database)} />;
+    }
+    if (tab.special === "decision-center") {
+      return (
+        <DecisionCenterPanel
+          securities={securityReferenceOptions(database)}
+          tradeDecisions={database.sqlite.prepare("SELECT * FROM trade_decisions ORDER BY rowid DESC").all() as Row[]}
+          reviewEvents={database.sqlite.prepare("SELECT * FROM review_events ORDER BY expected_date ASC, rowid DESC").all() as Row[]}
+        />
+      );
     }
     return <ExportPage />;
   }

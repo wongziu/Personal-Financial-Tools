@@ -185,6 +185,84 @@ export function initializeDatabase(sqlite: Database.Database): void {
       next_review_date TEXT NOT NULL,
       closing_conclusion TEXT
     );
+    CREATE TABLE IF NOT EXISTS strategies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL,
+      investor_fit TEXT NOT NULL,
+      universe_rules TEXT NOT NULL,
+      entry_rules TEXT NOT NULL,
+      exit_rules TEXT NOT NULL,
+      evidence_requirements TEXT NOT NULL,
+      risk_budget TEXT NOT NULL,
+      review_cadence TEXT NOT NULL,
+      success_metrics TEXT NOT NULL,
+      created_date TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS strategy_versions (
+      id TEXT PRIMARY KEY,
+      strategy_id TEXT NOT NULL,
+      version TEXT NOT NULL,
+      status TEXT NOT NULL,
+      effective_date TEXT NOT NULL,
+      investor_fit TEXT NOT NULL,
+      universe_rules TEXT NOT NULL,
+      entry_rules TEXT NOT NULL,
+      exit_rules TEXT NOT NULL,
+      evidence_requirements TEXT NOT NULL,
+      risk_budget TEXT NOT NULL,
+      review_cadence TEXT NOT NULL,
+      success_metrics TEXT NOT NULL,
+      revision_notes TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS research_agent_runs (
+      id TEXT PRIMARY KEY,
+      run_type TEXT NOT NULL,
+      run_date TEXT NOT NULL,
+      security_id TEXT,
+      strategy_id TEXT,
+      strategy_version_id TEXT,
+      review_session_id TEXT,
+      question TEXT NOT NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL,
+      final_summary TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS research_agent_stages (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      stage_order INTEGER NOT NULL,
+      stage_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL,
+      input_summary TEXT NOT NULL,
+      output TEXT NOT NULL,
+      latency_ms REAL NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS strategy_runs (
+      id TEXT PRIMARY KEY,
+      strategy_id TEXT NOT NULL,
+      strategy_version_id TEXT,
+      run_date TEXT NOT NULL,
+      universe_summary TEXT NOT NULL,
+      status TEXT NOT NULL,
+      final_summary TEXT NOT NULL,
+      created_agent_run_id TEXT
+    );
+    CREATE TABLE IF NOT EXISTS strategy_candidates (
+      id TEXT PRIMARY KEY,
+      strategy_run_id TEXT NOT NULL,
+      security_id TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      fit_score REAL NOT NULL,
+      recommendation TEXT NOT NULL,
+      matched_rules TEXT NOT NULL,
+      missing_evidence TEXT NOT NULL,
+      risk_flags TEXT NOT NULL,
+      next_action TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS thesis_evidence (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       thesis_id TEXT NOT NULL,
@@ -255,6 +333,27 @@ export function initializeDatabase(sqlite: Database.Database): void {
       needs_system_change INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'Draft',
       closed_date TEXT
+    );
+    CREATE TABLE IF NOT EXISTS review_sessions (
+      id TEXT PRIMARY KEY,
+      review_date TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      trigger_reason TEXT NOT NULL,
+      status TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      created_agent_run_id TEXT
+    );
+    CREATE TABLE IF NOT EXISTS review_findings (
+      id TEXT PRIMARY KEY,
+      review_session_id TEXT NOT NULL,
+      finding_type TEXT NOT NULL,
+      related_security_id TEXT,
+      related_strategy_id TEXT,
+      related_thesis_id TEXT,
+      related_decision_id TEXT,
+      severity TEXT NOT NULL,
+      finding TEXT NOT NULL,
+      next_action TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS holding_snapshots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

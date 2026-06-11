@@ -154,6 +154,90 @@ export const theses = sqliteTable("theses", {
   closingConclusion: text("closing_conclusion")
 });
 
+export const strategies = sqliteTable("strategies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  status: text("status").notNull(),
+  investorFit: text("investor_fit").notNull(),
+  universeRules: text("universe_rules").notNull(),
+  entryRules: text("entry_rules").notNull(),
+  exitRules: text("exit_rules").notNull(),
+  evidenceRequirements: text("evidence_requirements").notNull(),
+  riskBudget: text("risk_budget").notNull(),
+  reviewCadence: text("review_cadence").notNull(),
+  successMetrics: text("success_metrics").notNull(),
+  createdDate: text("created_date").notNull()
+});
+
+export const strategyVersions = sqliteTable("strategy_versions", {
+  id: text("id").primaryKey(),
+  strategyId: text("strategy_id").notNull(),
+  version: text("version").notNull(),
+  status: text("status").notNull(),
+  effectiveDate: text("effective_date").notNull(),
+  investorFit: text("investor_fit").notNull(),
+  universeRules: text("universe_rules").notNull(),
+  entryRules: text("entry_rules").notNull(),
+  exitRules: text("exit_rules").notNull(),
+  evidenceRequirements: text("evidence_requirements").notNull(),
+  riskBudget: text("risk_budget").notNull(),
+  reviewCadence: text("review_cadence").notNull(),
+  successMetrics: text("success_metrics").notNull(),
+  revisionNotes: text("revision_notes").notNull()
+});
+
+export const researchAgentRuns = sqliteTable("research_agent_runs", {
+  id: text("id").primaryKey(),
+  runType: text("run_type").notNull(),
+  runDate: text("run_date").notNull(),
+  securityId: text("security_id"),
+  strategyId: text("strategy_id"),
+  strategyVersionId: text("strategy_version_id"),
+  reviewSessionId: text("review_session_id"),
+  question: text("question").notNull(),
+  model: text("model").notNull(),
+  status: text("status").notNull(),
+  finalSummary: text("final_summary").notNull(),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP")
+});
+
+export const researchAgentStages = sqliteTable("research_agent_stages", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull(),
+  stageOrder: integer("stage_order").notNull(),
+  stageId: text("stage_id").notNull(),
+  title: text("title").notNull(),
+  status: text("status").notNull(),
+  inputSummary: text("input_summary").notNull(),
+  output: text("output").notNull(),
+  latencyMs: real("latency_ms").notNull()
+});
+
+export const strategyRuns = sqliteTable("strategy_runs", {
+  id: text("id").primaryKey(),
+  strategyId: text("strategy_id").notNull(),
+  strategyVersionId: text("strategy_version_id"),
+  runDate: text("run_date").notNull(),
+  universeSummary: text("universe_summary").notNull(),
+  status: text("status").notNull(),
+  finalSummary: text("final_summary").notNull(),
+  createdAgentRunId: text("created_agent_run_id")
+});
+
+export const strategyCandidates = sqliteTable("strategy_candidates", {
+  id: text("id").primaryKey(),
+  strategyRunId: text("strategy_run_id").notNull(),
+  securityId: text("security_id").notNull(),
+  rank: integer("rank").notNull(),
+  fitScore: real("fit_score").notNull(),
+  recommendation: text("recommendation").notNull(),
+  matchedRules: text("matched_rules").notNull(),
+  missingEvidence: text("missing_evidence").notNull(),
+  riskFlags: text("risk_flags").notNull(),
+  nextAction: text("next_action").notNull()
+});
+
 export const thesisEvidence = sqliteTable("thesis_evidence", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   thesisId: text("thesis_id").notNull(),
@@ -230,6 +314,29 @@ export const exceptions = sqliteTable("exceptions", {
   closedDate: text("closed_date")
 });
 
+export const reviewSessions = sqliteTable("review_sessions", {
+  id: text("id").primaryKey(),
+  reviewDate: text("review_date").notNull(),
+  scope: text("scope").notNull(),
+  triggerReason: text("trigger_reason").notNull(),
+  status: text("status").notNull(),
+  summary: text("summary").notNull(),
+  createdAgentRunId: text("created_agent_run_id")
+});
+
+export const reviewFindings = sqliteTable("review_findings", {
+  id: text("id").primaryKey(),
+  reviewSessionId: text("review_session_id").notNull(),
+  findingType: text("finding_type").notNull(),
+  relatedSecurityId: text("related_security_id"),
+  relatedStrategyId: text("related_strategy_id"),
+  relatedThesisId: text("related_thesis_id"),
+  relatedDecisionId: text("related_decision_id"),
+  severity: text("severity").notNull(),
+  finding: text("finding").notNull(),
+  nextAction: text("next_action").notNull()
+});
+
 export const holdingSnapshots = sqliteTable("holding_snapshots", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   snapshotDate: text("snapshot_date").notNull(),
@@ -276,11 +383,19 @@ export const schema = {
   fxRates,
   informationSources,
   theses,
+  strategies,
+  strategyVersions,
+  researchAgentRuns,
+  researchAgentStages,
+  strategyRuns,
+  strategyCandidates,
   thesisEvidence,
   reviewEvents,
   tradeDecisions,
   tradeDecisionSources,
   exceptions,
+  reviewSessions,
+  reviewFindings,
   holdingSnapshots,
   portfolioSnapshots,
   accountNavAnchors

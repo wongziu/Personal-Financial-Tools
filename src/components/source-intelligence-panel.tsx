@@ -24,7 +24,7 @@ export function SourceIntelligencePanel({
   onApplyDraft
 }: {
   securities: ReferenceOption[];
-  onApplyDraft: (draft: SourceDraftFields & { securityId?: string }) => void;
+  onApplyDraft?: (draft: SourceDraftFields & { securityId?: string }) => void;
 }) {
   const { language, t } = useLanguage();
   const [securityId, setSecurityId] = useState(securities[0]?.value ?? "");
@@ -119,17 +119,19 @@ export function SourceIntelligencePanel({
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs text-muted-foreground">{draft.notes}</div>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  onApplyDraft({
-                    ...draft.fields,
-                    securityId
-                  })
-                }
-              >
-                {localize(language, "应用到新建记录", "Apply to New Record")}
-              </Button>
+              {onApplyDraft ? (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    onApplyDraft({
+                      ...draft.fields,
+                      securityId
+                    })
+                  }
+                >
+                  {localize(language, "应用到新建记录", "Apply to New Record")}
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : null}

@@ -38,11 +38,20 @@ flowchart LR
   AccountsWs --> AccountCalendar["账户日历"]
   MarketWs --> Prices["价格"]
   MarketWs --> FxRates["汇率"]
-  ResearchWs --> Sources["信息来源"]
-  ResearchWs --> Theses["投资论点"]
-  ResearchWs --> ReviewEvents["复核日历"]
-  ResearchWs --> TradeDecisions["交易决策"]
-  ResearchWs --> ResearchAi["AI 研究"]
+  ResearchWs --> InfoAnalysis["信息分析"]
+  ResearchWs --> AiPicks["AI 自驱选股"]
+  ResearchWs --> MyDecisions["我的决策"]
+  InfoAnalysis --> Sources["信息来源"]
+  InfoAnalysis --> Theses["投资论点"]
+  AiPicks --> Strategies["策略库"]
+  AiPicks --> StrategyVersions["策略版本"]
+  AiPicks --> StrategyRuns["策略运行"]
+  AiPicks --> StrategyCandidates["候选卡片"]
+  AiPicks --> ResearchRuns["AI 运行记录"]
+  MyDecisions --> ReviewEvents["复核日历"]
+  MyDecisions --> ReviewSessions["复盘会话"]
+  MyDecisions --> ReviewFindings["复盘发现"]
+  MyDecisions --> TradeDecisions["交易决策"]
   GovernanceWs --> RiskRules["风险规则"]
   GovernanceWs --> Exceptions["例外/违规"]
   GovernanceWs --> Export["导出"]
@@ -118,48 +127,42 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  ExternalText["外部资料文本或 URL"] --> SourceDraft["source-intelligence 草稿"]
-  Settings["模型与来源智能设置"] --> SourceDraft
-  SourceDraft -.->|用户确认后应用到表单| Sources["information_sources"]
+  ResearchWorkspace["/research 研究工作台"] --> InfoAnalysis["信息分析"]
+  ResearchWorkspace --> AiPicks["AI 自驱选股"]
+  ResearchWorkspace --> MyDecisions["我的决策"]
 
-  Securities["securities"] --> Sources
-  Securities --> Theses["theses"]
-  Sources -.->|related_thesis_id| Theses
-  Theses --> TradeDecisions["trade_decisions"]
-  Sources --> TradeDecisionSources["trade_decision_sources"]
-  TradeDecisionSources --> TradeDecisions
-  TradeDecisions --> ReviewEvents["review_events"]
-  Sources --> ContextSnapshot["研究上下文快照"]
-  Theses --> ContextSnapshot
-  ReviewEvents --> ContextSnapshot
-  TradeDecisions --> ContextSnapshot
-  Securities --> ContextSnapshot
-  ContextSnapshot --> AnalysisMode{"分析模式"}
-  AnalysisMode --> Brief["研究简报"]
-  AnalysisMode --> EvidenceAudit["证据审计"]
-  AnalysisMode --> RiskCatalyst["风险催化"]
-  AnalysisMode --> DecisionMemo["决策备忘"]
-  Brief --> SingleAi["单次 AI 分析"]
-  EvidenceAudit --> SingleAi
-  RiskCatalyst --> SingleAi
-  DecisionMemo --> SingleAi
-  AnalysisMode --> AgentWorkflow["Agent 工作流"]
-  AgentWorkflow --> EvidenceAgent["Evidence Agent"]
-  EvidenceAgent --> ThesisAgent["Thesis Agent"]
-  ThesisAgent --> RiskAgent["Risk Agent"]
-  RiskAgent --> DecisionAgent["Decision Agent"]
-  DecisionAgent --> CriticAgent["Critic Agent"]
-  SingleAi --> ResearchAi["AI 研究输出"]
-  CriticAgent --> ResearchAi
-  ModelConfig["模型执行配置"] --> ResearchAi
+  ExternalText["外部资料文本或 URL"] --> InfoDraft["信息草稿"]
+  InfoDraft --> Facts["最近资料事实"]
+  Facts --> Opinions["当前投资观点"]
+  InfoAnalysis --> InfoDraft
+  InfoAnalysis --> Facts
+  InfoAnalysis --> Opinions
+
+  BuiltInStrategies["内置策略"] --> AiPicks
+  AiPicks --> StrategyRunApi["POST /api/research-iteration-workflow"]
+  StrategyRunApi --> CandidateCards["候选标的卡片"]
+  CandidateCards --> ActionAdvice["买入 / 观察 / 补资料 / 暂不买入"]
+
+  MyDecisions --> PendingDecisions["待确认决策"]
+  MyDecisions --> ReviewReminders["观察与复核"]
+  MyDecisions --> CompletedRecords["已完成记录"]
+
+  Facts -.-> Sources["information_sources"]
+  Opinions -.-> Theses["theses"]
+  BuiltInStrategies -.-> Strategies["strategies / strategy_versions"]
+  StrategyRunApi -.-> StrategyAudit["research_agent_runs / strategy_runs / strategy_candidates"]
+  PendingDecisions -.-> TradeDecisions["trade_decisions"]
+  ReviewReminders -.-> ReviewEvents["review_events"]
+  CompletedRecords -.-> ReviewSessions["review_sessions / review_findings"]
 ```
 
 当前边界：
 
-- 来源智能只生成可审查草稿，不直接保存记录。
-- 草稿可复用到信息来源、论点、交易决策、复核事件，但当前直接落地入口是信息来源表单。
-- 交易决策表单引用已有标的、论点、信息来源，避免手填孤立 ID。
-- AI 研究分析先汇总来源、论点、复核事件、交易决策覆盖度；支持单次 AI 分析，也支持 Evidence、Thesis、Risk、Decision、Critic 五段 Agent 工作流。
+- `/research` 主入口面向用户只暴露 `信息分析`、`AI 自驱选股`、`我的决策` 三个页签。
+- 来源智能只生成可审查草稿，不直接保存记录；用户确认后的结构化记录仍由底层模块表承接。
+- 策略、策略版本、策略运行、候选卡片、AI 运行记录仍存在，但在主工作台中是 AI 自驱选股的实现和审计层，不再作为一级用户页签。
+- 交易决策和复核事件在 `我的决策` 中按待确认、观察复核、已完成记录摘要展示；完整字段仍可通过底层模块路由维护。
+- 旧的单次 AI 分析和 Agent 工作流能力仍保留为 API/组件底座，当前主工作台优先呈现可读的策略选股结果。
 
 ### 风控与治理层
 
@@ -201,11 +204,19 @@ flowchart LR
 | 账户现金流 | 记录出入金、分红、利息、费用、换汇；派生收益和外部现金流标记 | `src/app/[module]/page.tsx`, `src/app/api/modules/[module]/route.ts` | `cashflows` | `src/lib/modules.ts`, `src/lib/services.ts` | `src/lib/db.integration.test.ts`, `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
 | 价格 | 手动维护估值价格，并支持待补价格队列 | `src/app/market-data/page.tsx`, `src/app/[module]/page.tsx` | `market_prices` | `src/lib/modules.ts`, `src/lib/services.ts#getPriceEntrySecurities`, `src/components/price-quick-panel.tsx` | `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 汇率 | 手动维护 FX，支持自动刷新和快速录入 | `src/app/market-data/page.tsx`, `src/app/api/fx-refresh/route.ts` | `fx_rates`, `system_settings` | `src/lib/fx-refresh.ts`, `src/components/fx-quick-panel.tsx`, `src/lib/module-interactions.ts#getLatestFxRates` | `src/lib/fx-refresh.test.ts`, `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
-| 信息来源 | 记录证据等级、关键事实、原始链接、论点影响 | `src/app/research/page.tsx`, `src/app/api/source-intelligence/route.ts` | `information_sources` | `src/lib/modules.ts`, `src/lib/source-intelligence.ts`, `src/components/source-intelligence-panel.tsx` | `src/lib/source-intelligence.test.ts`, `tests/e2e/core.spec.ts` |
-| 投资论点 | 记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
-| 复核日历 | 管理财报、复核、风险事件和后续行动 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx` | `review_events` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
-| 交易决策 | 记录交易前理由、仓位、风险、证据来源和最终决策 | `src/app/research/page.tsx`, `src/app/[module]/page.tsx`, `src/app/api/trade-decisions/route.ts` | `trade_decisions`, `trade_decision_sources` | `src/components/trade-decisions-page.tsx`, `src/lib/services.ts#createTradeDecisionWithRisk`, `src/lib/validation.ts` | `src/lib/db.integration.test.ts`, `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
-| AI 研究 | 基于本地研究记录生成上下文快照；支持单次分析和五段 Agent 工作流 | `src/app/research/page.tsx`, `src/app/api/research-ai/route.ts`, `src/app/api/research-agent-workflow/route.ts` | `securities`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/components/research-ai-panel.tsx`, `src/lib/research-ai.ts`, `src/lib/research-agent-workflow.ts`, `src/lib/model-client.ts` | `src/lib/research-ai.test.ts`, `src/lib/research-agent-workflow.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
+| 信息分析 | 将外部资料整理成可读事实，并结合投资论点形成当前观点 | `src/app/research/page.tsx`, `src/app/api/source-intelligence/route.ts` | `information_sources`, `theses` | `src/components/research-workbench-panels.tsx`, `src/components/source-intelligence-panel.tsx`, `src/lib/source-intelligence.ts`, `src/lib/modules.ts` | `src/lib/source-intelligence.test.ts`, `tests/e2e/core.spec.ts` |
+| 信息来源 | 底层记录证据等级、关键事实、原始链接、论点影响 | `src/app/[module]/page.tsx`, `src/app/api/source-intelligence/route.ts` | `information_sources` | `src/lib/modules.ts`, `src/lib/source-intelligence.ts`, `src/components/source-intelligence-panel.tsx` | `src/lib/source-intelligence.test.ts`, `tests/e2e/core.spec.ts` |
+| 投资论点 | 底层记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
+| AI 自驱选股 | 从内置策略触发候选筛选，展示标的、建议动作、证据缺口和风险 | `src/app/research/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategies`, `strategy_versions`, `strategy_runs`, `strategy_candidates`, `research_agent_runs`, `research_agent_stages` | `src/components/ai-stock-picks-panel.tsx`, `src/components/research-workbench-panels.tsx`, `src/lib/research-iteration-workflow.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| 策略库 | 底层维护散户慢频策略假设、证据门槛、风险预算和复盘频率 | `src/app/[module]/page.tsx` | `strategies` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
+| 策略版本 | 底层保存策略版本，复盘后通过新版本承接规则变化 | `src/app/[module]/page.tsx` | `strategy_versions` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
+| 策略运行 | 底层记录每次策略筛选的范围、摘要和关联 AI 运行 | `src/app/[module]/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategy_runs`, `research_agent_runs` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| 候选卡片 | 底层保存策略运行产生的候选标的、适配分、证据缺口、风险和下一步动作 | `src/app/[module]/page.tsx` | `strategy_candidates` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| 我的决策 | 汇总待确认决策、观察复核和已完成记录，面向行动和回看 | `src/app/research/page.tsx`, `src/app/api/trade-decisions/route.ts` | `trade_decisions`, `trade_decision_sources`, `review_events`, `review_sessions`, `review_findings` | `src/components/research-workbench-panels.tsx`, `src/components/trade-decisions-page.tsx`, `src/lib/services.ts#createTradeDecisionWithRisk`, `src/lib/validation.ts` | `src/lib/db.integration.test.ts`, `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
+| 复核日历 | 底层管理财报、复核、风险事件和后续行动 | `src/app/[module]/page.tsx` | `review_events` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
+| 复盘会话 | 底层记录按时间窗口、事件或策略触发的结构化复盘 | `src/app/[module]/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `review_sessions` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| 复盘发现 | 底层把复盘结论关联到策略、标的、论点或交易决策 | `src/app/[module]/page.tsx` | `review_findings` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts` |
+| AI 研究底座 | 基于本地研究记录生成上下文快照；保留单次分析、五段 Agent 工作流和迭代工作流 API | `src/app/api/research-ai/route.ts`, `src/app/api/research-agent-workflow/route.ts`, `src/app/api/research-iteration-workflow/route.ts` | `securities`, `information_sources`, `theses`, `review_events`, `trade_decisions`, `research_agent_runs`, `research_agent_stages` | `src/components/research-ai-panel.tsx`, `src/lib/research-ai.ts`, `src/lib/research-agent-workflow.ts`, `src/lib/research-iteration-workflow.ts`, `src/lib/model-client.ts` | `src/lib/research-ai.test.ts`, `src/lib/research-agent-workflow.test.ts`, `src/lib/research-iteration-workflow.test.ts`, `src/lib/model-client.test.ts`, `tests/e2e/core.spec.ts` |
 | 风险规则 | 维护交易决策校验使用的阈值和级别 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `risk_rules` | `src/lib/modules.ts`, `src/lib/risk.ts` | `src/lib/finance.test.ts`, `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 例外/违规 | 记录事前例外、事后违规、数据错误、流程遗漏 | `src/app/governance/page.tsx`, `src/app/[module]/page.tsx` | `exceptions` | `src/lib/modules.ts`, `src/lib/services.ts#createTradeDecisionWithRisk` | `src/lib/db.integration.test.ts`, `tests/e2e/core.spec.ts` |
 | 导出 | 导出 V1 核心模块 Excel workbook | `src/app/governance/page.tsx`, `src/app/export/page.tsx`, `src/app/api/export/route.ts` | 多核心表 | `src/lib/export.ts`, `src/lib/services.ts#listAllExportData`, `src/components/export-page.tsx` | `src/lib/finance.test.ts`, `tests/e2e/core.spec.ts` |
@@ -230,12 +241,14 @@ flowchart TB
   PricesRoute["/prices"] -.->|legacy group| Market
   FxRoute["/fx-rates"] -.->|legacy group| Market
 
-  Research["/research"] --> ResearchWorkspace["来源 + 论点 + 复核 + 决策"]
+  Research["/research"] --> ResearchWorkspace["信息分析 + AI 自驱选股 + 我的决策"]
   SourcesRoute["/sources"] -.->|legacy group| Research
   ThesesRoute["/theses"] -.->|legacy group| Research
   EventsRoute["/review-events"] -.->|legacy group| Research
   DecisionsRoute["/trade-decisions"] -.->|legacy group| Research
-  ResearchWorkspace --> ResearchAiTab["AI 研究 tab"]
+  ResearchWorkspace --> InfoAnalysisTab["信息分析 tab"]
+  ResearchWorkspace --> AiPicksTab["AI 自驱选股 tab"]
+  ResearchWorkspace --> MyDecisionsTab["我的决策 tab"]
 
   Governance["/governance"] --> GovernanceWorkspace["规则 + 例外 + 导出"]
   RiskRoute["/risk-rules"] -.->|legacy group| Governance

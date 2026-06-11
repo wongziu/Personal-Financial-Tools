@@ -5,6 +5,7 @@ const naturalKeys: Record<string, string[]> = {
   market_prices: ["price_date", "security_id"],
   fx_rates: ["rate_date", "from_currency", "to_currency"],
   account_nav_anchors: ["account_id", "anchor_date"],
+  strategy_versions: ["strategy_id", "version"],
   thesis_evidence: ["thesis_id", "source_id", "evidence_side"],
   trade_decision_sources: ["decision_id", "source_id"]
 };
@@ -50,6 +51,12 @@ export function seedDemoData(database: DatabaseContext): void {
   ]);
 
   insertMany(database, "id_counters", [
+    { prefix: "AIRUN", year: 2026, current_value: 0 },
+    { prefix: "ASTG", year: 2026, current_value: 0 },
+    { prefix: "SRUN", year: 2026, current_value: 0 },
+    { prefix: "CAND", year: 2026, current_value: 0 },
+    { prefix: "REVW", year: 2026, current_value: 0 },
+    { prefix: "FIND", year: 2026, current_value: 0 },
     { prefix: "DEC", year: 2026, current_value: 1 },
     { prefix: "EXC", year: 2026, current_value: 1 },
     { prefix: "TRD", year: 2026, current_value: 3 }
@@ -251,6 +258,43 @@ export function seedDemoData(database: DatabaseContext): void {
       related_thesis_id: "THS-2026-001",
       entered_by: "Owner",
       entered_date: "2026-05-02"
+    }
+  ]);
+
+  insertMany(database, "strategies", [
+    {
+      id: "STRAT-CORE-GROWTH",
+      name: "核心成长观察策略",
+      description: "面向散户慢频投资的核心成长候选筛选，先看证据质量、仓位上限和复核纪律。",
+      status: "Active",
+      investor_fit: "适合手动研究、低频交易、单标的仓位不超过组合 10% 的账户。",
+      universe_rules: "A-Share, HK, US；优先流动性 High；排除 Prohibited 标的。",
+      entry_rules: "至少一条 A/B 证据，存在主动论点或可以建立论点，且不触发硬性仓位约束。",
+      exit_rules: "论点失效、证据被削弱、复核错过或主题暴露超过上限时退出或降级观察。",
+      evidence_requirements: "至少一条 A/B 级信息来源；缺少财报、公告或行业数据时标记补证据。",
+      risk_budget: "单标的目标仓位 3%-5%，硬上限 10%，策略总仓位不超过 40%。",
+      review_cadence: "每周检查，财报和重大新闻后事件复盘。",
+      success_metrics: "收益、最大回撤、证据命中率、纪律执行、复核准时率。",
+      created_date: "2026-06-10"
+    }
+  ]);
+
+  insertMany(database, "strategy_versions", [
+    {
+      id: "STRAT-CORE-GROWTH-V1",
+      strategy_id: "STRAT-CORE-GROWTH",
+      version: "V1",
+      status: "Active",
+      effective_date: "2026-06-10",
+      investor_fit: "适合手动研究、低频交易、单标的仓位不超过组合 10% 的账户。",
+      universe_rules: "A-Share, HK, US；优先流动性 High；排除 Prohibited 标的。",
+      entry_rules: "至少一条 A/B 证据，存在主动论点或可以建立论点，且不触发硬性仓位约束。",
+      exit_rules: "论点失效、证据被削弱、复核错过或主题暴露超过上限时退出或降级观察。",
+      evidence_requirements: "至少一条 A/B 级信息来源；缺少财报、公告或行业数据时标记补证据。",
+      risk_budget: "单标的目标仓位 3%-5%，硬上限 10%，策略总仓位不超过 40%。",
+      review_cadence: "每周检查，财报和重大新闻后事件复盘。",
+      success_metrics: "收益、最大回撤、证据命中率、纪律执行、复核准时率。",
+      revision_notes: "初始版本：强调证据、仓位和复盘纪律。"
     }
   ]);
 

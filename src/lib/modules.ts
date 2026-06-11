@@ -300,6 +300,97 @@ export const moduleDefinitions: ModuleDefinition[] = [
     ]
   },
   {
+    id: "strategies",
+    table: "strategies",
+    navLabelZh: "策略库",
+    navLabelEn: "Strategies",
+    descriptionZh: "维护面向散户慢频投资的策略假设、证据门槛、仓位约束和复盘频率。",
+    descriptionEn: "Maintain retail-friendly strategy hypotheses, evidence gates, risk budgets, and review cadence.",
+    tableColumns: ["id", "name", "status", "review_cadence", "risk_budget"],
+    fields: [
+      { name: "id", column: "id", labelZh: "策略 ID", labelEn: "Strategy ID", type: "text" },
+      { name: "name", column: "name", labelZh: "策略名称", labelEn: "Name", type: "text", required: true },
+      { name: "description", column: "description", labelZh: "策略说明", labelEn: "Description", type: "textarea", required: true },
+      { name: "status", column: "status", labelZh: "状态", labelEn: "Status", type: "select", options: ["Draft", "Active", "Paused", "Retired"], defaultValue: "Draft" },
+      { name: "investorFit", column: "investor_fit", labelZh: "适用投资者", labelEn: "Investor Fit", type: "textarea", required: true },
+      { name: "universeRules", column: "universe_rules", labelZh: "候选范围", labelEn: "Universe Rules", type: "textarea", required: true },
+      { name: "entryRules", column: "entry_rules", labelZh: "进入条件", labelEn: "Entry Rules", type: "textarea", required: true },
+      { name: "exitRules", column: "exit_rules", labelZh: "退出条件", labelEn: "Exit Rules", type: "textarea", required: true },
+      { name: "evidenceRequirements", column: "evidence_requirements", labelZh: "证据要求", labelEn: "Evidence Requirements", type: "textarea", required: true },
+      { name: "riskBudget", column: "risk_budget", labelZh: "风险预算", labelEn: "Risk Budget", type: "textarea", required: true },
+      { name: "reviewCadence", column: "review_cadence", labelZh: "复盘频率", labelEn: "Review Cadence", type: "text", required: true },
+      { name: "successMetrics", column: "success_metrics", labelZh: "成功指标", labelEn: "Success Metrics", type: "textarea", required: true },
+      { name: "createdDate", column: "created_date", labelZh: "创建日期", labelEn: "Created Date", type: "date", required: true }
+    ]
+  },
+  {
+    id: "strategy-versions",
+    table: "strategy_versions",
+    navLabelZh: "策略版本",
+    navLabelEn: "Strategy Versions",
+    descriptionZh: "记录策略的可追溯版本，复盘后通过新版本承接规则变化。",
+    descriptionEn: "Track versioned strategy rules so review changes are auditable.",
+    tableColumns: ["id", "strategy_id", "version", "status", "effective_date"],
+    fields: [
+      { name: "id", column: "id", labelZh: "版本 ID", labelEn: "Version ID", type: "text" },
+      { name: "strategyId", column: "strategy_id", labelZh: "策略", labelEn: "Strategy", type: "text", required: true, reference: { table: "strategies", valueColumn: "id", labelColumns: ["name", "id"] } },
+      { name: "version", column: "version", labelZh: "版本", labelEn: "Version", type: "text", required: true },
+      { name: "status", column: "status", labelZh: "状态", labelEn: "Status", type: "select", options: ["Draft", "Active", "Retired"], defaultValue: "Draft" },
+      { name: "effectiveDate", column: "effective_date", labelZh: "生效日期", labelEn: "Effective Date", type: "date", required: true },
+      { name: "investorFit", column: "investor_fit", labelZh: "适用投资者", labelEn: "Investor Fit", type: "textarea", required: true },
+      { name: "universeRules", column: "universe_rules", labelZh: "候选范围", labelEn: "Universe Rules", type: "textarea", required: true },
+      { name: "entryRules", column: "entry_rules", labelZh: "进入条件", labelEn: "Entry Rules", type: "textarea", required: true },
+      { name: "exitRules", column: "exit_rules", labelZh: "退出条件", labelEn: "Exit Rules", type: "textarea", required: true },
+      { name: "evidenceRequirements", column: "evidence_requirements", labelZh: "证据要求", labelEn: "Evidence Requirements", type: "textarea", required: true },
+      { name: "riskBudget", column: "risk_budget", labelZh: "风险预算", labelEn: "Risk Budget", type: "textarea", required: true },
+      { name: "reviewCadence", column: "review_cadence", labelZh: "复盘频率", labelEn: "Review Cadence", type: "text", required: true },
+      { name: "successMetrics", column: "success_metrics", labelZh: "成功指标", labelEn: "Success Metrics", type: "textarea", required: true },
+      { name: "revisionNotes", column: "revision_notes", labelZh: "修订说明", labelEn: "Revision Notes", type: "textarea", required: true }
+    ]
+  },
+  {
+    id: "strategy-runs",
+    table: "strategy_runs",
+    navLabelZh: "策略运行",
+    navLabelEn: "Strategy Runs",
+    descriptionZh: "记录每次策略筛选的输入范围、数据覆盖和最终摘要。",
+    descriptionEn: "Record each strategy screening run, universe coverage, and final summary.",
+    idPrefix: "SRUN",
+    tableColumns: ["id", "strategy_id", "run_date", "status", "final_summary"],
+    fields: [
+      { name: "id", column: "id", labelZh: "运行 ID", labelEn: "Run ID", type: "text" },
+      { name: "strategyId", column: "strategy_id", labelZh: "策略", labelEn: "Strategy", type: "text", required: true, reference: { table: "strategies", valueColumn: "id", labelColumns: ["name", "id"] } },
+      { name: "strategyVersionId", column: "strategy_version_id", labelZh: "策略版本", labelEn: "Strategy Version", type: "text", reference: { table: "strategy_versions", valueColumn: "id", labelColumns: ["id", "version"], metadataColumns: ["strategy_id"] } },
+      { name: "runDate", column: "run_date", labelZh: "运行日期", labelEn: "Run Date", type: "date", required: true },
+      { name: "universeSummary", column: "universe_summary", labelZh: "候选范围摘要", labelEn: "Universe Summary", type: "textarea", required: true },
+      { name: "status", column: "status", labelZh: "状态", labelEn: "Status", type: "select", options: ["Draft", "Completed", "Failed"], defaultValue: "Draft" },
+      { name: "finalSummary", column: "final_summary", labelZh: "最终摘要", labelEn: "Final Summary", type: "textarea", required: true },
+      { name: "createdAgentRunId", column: "created_agent_run_id", labelZh: "AI 运行 ID", labelEn: "AI Run", type: "text", reference: { table: "research_agent_runs", valueColumn: "id", labelColumns: ["id", "run_type"] } }
+    ]
+  },
+  {
+    id: "strategy-candidates",
+    table: "strategy_candidates",
+    navLabelZh: "候选卡片",
+    navLabelEn: "Candidates",
+    descriptionZh: "保存策略运行产生的候选标的、适配分、证据缺口、风险和下一步动作。",
+    descriptionEn: "Store strategy candidates, fit scores, missing evidence, risks, and next actions.",
+    idPrefix: "CAND",
+    tableColumns: ["id", "strategy_run_id", "security_id", "fit_score", "next_action"],
+    fields: [
+      { name: "id", column: "id", labelZh: "候选 ID", labelEn: "Candidate ID", type: "text" },
+      { name: "strategyRunId", column: "strategy_run_id", labelZh: "策略运行", labelEn: "Strategy Run", type: "text", required: true, reference: { table: "strategy_runs", valueColumn: "id", labelColumns: ["id", "run_date"], metadataColumns: ["strategy_id"] } },
+      { name: "securityId", column: "security_id", labelZh: "标的", labelEn: "Security", type: "text", required: true, reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
+      { name: "rank", column: "rank", labelZh: "排名", labelEn: "Rank", type: "number", required: true },
+      { name: "fitScore", column: "fit_score", labelZh: "适配分", labelEn: "Fit Score", type: "number", required: true },
+      { name: "recommendation", column: "recommendation", labelZh: "建议", labelEn: "Recommendation", type: "select", options: ["Observe", "CollectEvidence", "CreateThesis", "DraftDecision", "Skip"], defaultValue: "Observe" },
+      { name: "matchedRules", column: "matched_rules", labelZh: "命中规则", labelEn: "Matched Rules", type: "textarea", required: true },
+      { name: "missingEvidence", column: "missing_evidence", labelZh: "缺失证据", labelEn: "Missing Evidence", type: "textarea", required: true },
+      { name: "riskFlags", column: "risk_flags", labelZh: "风险标记", labelEn: "Risk Flags", type: "textarea", required: true },
+      { name: "nextAction", column: "next_action", labelZh: "下一步动作", labelEn: "Next Action", type: "textarea", required: true }
+    ]
+  },
+  {
     id: "theses",
     table: "theses",
     navLabelZh: "投资论点",
@@ -361,6 +452,70 @@ export const moduleDefinitions: ModuleDefinition[] = [
         type: "text",
         reference: { table: "trade_decisions", valueColumn: "id", labelColumns: ["id", "security_id", "action"], metadataColumns: ["security_id", "thesis_id"] }
       }
+    ]
+  },
+  {
+    id: "review-sessions",
+    table: "review_sessions",
+    navLabelZh: "复盘会话",
+    navLabelEn: "Review Sessions",
+    descriptionZh: "记录按时间窗口、事件或策略触发的结构化复盘。",
+    descriptionEn: "Record structured reviews triggered by a period, event, or strategy.",
+    idPrefix: "REVW",
+    tableColumns: ["id", "review_date", "scope", "trigger_reason", "status"],
+    fields: [
+      { name: "id", column: "id", labelZh: "复盘 ID", labelEn: "Review ID", type: "text" },
+      { name: "reviewDate", column: "review_date", labelZh: "复盘日期", labelEn: "Review Date", type: "date", required: true },
+      { name: "scope", column: "scope", labelZh: "复盘范围", labelEn: "Scope", type: "text", required: true },
+      { name: "triggerReason", column: "trigger_reason", labelZh: "触发原因", labelEn: "Trigger Reason", type: "textarea", required: true },
+      { name: "status", column: "status", labelZh: "状态", labelEn: "Status", type: "select", options: ["Draft", "Confirmed", "Closed"], defaultValue: "Draft" },
+      { name: "summary", column: "summary", labelZh: "摘要", labelEn: "Summary", type: "textarea", required: true },
+      { name: "createdAgentRunId", column: "created_agent_run_id", labelZh: "AI 运行 ID", labelEn: "AI Run", type: "text", reference: { table: "research_agent_runs", valueColumn: "id", labelColumns: ["id", "run_type"] } }
+    ]
+  },
+  {
+    id: "review-findings",
+    table: "review_findings",
+    navLabelZh: "复盘发现",
+    navLabelEn: "Review Findings",
+    descriptionZh: "把复盘结论结构化关联到策略、标的、论点或决策。",
+    descriptionEn: "Link review findings to strategies, securities, theses, or decisions.",
+    idPrefix: "FIND",
+    tableColumns: ["id", "review_session_id", "finding_type", "severity", "next_action"],
+    fields: [
+      { name: "id", column: "id", labelZh: "发现 ID", labelEn: "Finding ID", type: "text" },
+      { name: "reviewSessionId", column: "review_session_id", labelZh: "复盘会话", labelEn: "Review Session", type: "text", required: true, reference: { table: "review_sessions", valueColumn: "id", labelColumns: ["id", "scope"] } },
+      { name: "findingType", column: "finding_type", labelZh: "发现类型", labelEn: "Finding Type", type: "select", options: ["Outcome", "Thesis", "Discipline", "Strategy", "DataGap"], defaultValue: "Outcome" },
+      { name: "relatedSecurityId", column: "related_security_id", labelZh: "关联标的", labelEn: "Security", type: "text", reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
+      { name: "relatedStrategyId", column: "related_strategy_id", labelZh: "关联策略", labelEn: "Strategy", type: "text", reference: { table: "strategies", valueColumn: "id", labelColumns: ["name", "id"] } },
+      { name: "relatedThesisId", column: "related_thesis_id", labelZh: "关联论点", labelEn: "Thesis", type: "text", reference: { table: "theses", valueColumn: "id", labelColumns: ["one_line_thesis", "id"], metadataColumns: ["security_id"] } },
+      { name: "relatedDecisionId", column: "related_decision_id", labelZh: "关联决策", labelEn: "Decision", type: "text", reference: { table: "trade_decisions", valueColumn: "id", labelColumns: ["id", "security_id", "action"], metadataColumns: ["security_id", "thesis_id"] } },
+      { name: "severity", column: "severity", labelZh: "级别", labelEn: "Severity", type: "select", options: ["Info", "Warning", "Critical"], defaultValue: "Info" },
+      { name: "finding", column: "finding", labelZh: "发现", labelEn: "Finding", type: "textarea", required: true },
+      { name: "nextAction", column: "next_action", labelZh: "下一步动作", labelEn: "Next Action", type: "textarea", required: true }
+    ]
+  },
+  {
+    id: "research-runs",
+    table: "research_agent_runs",
+    navLabelZh: "AI 运行记录",
+    navLabelEn: "AI Runs",
+    descriptionZh: "持久化策略运行、标的诊断和复盘会话的 AI/Agent 输入、摘要和状态。",
+    descriptionEn: "Persist AI/agent runs for strategy screening, target diagnosis, and review sessions.",
+    idPrefix: "AIRUN",
+    tableColumns: ["id", "run_date", "run_type", "strategy_id", "security_id", "status"],
+    fields: [
+      { name: "id", column: "id", labelZh: "运行 ID", labelEn: "Run ID", type: "text" },
+      { name: "runType", column: "run_type", labelZh: "运行类型", labelEn: "Run Type", type: "select", options: ["strategy-run", "target-diagnosis", "review-session"], defaultValue: "strategy-run" },
+      { name: "runDate", column: "run_date", labelZh: "运行日期", labelEn: "Run Date", type: "date", required: true },
+      { name: "securityId", column: "security_id", labelZh: "标的", labelEn: "Security", type: "text", reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
+      { name: "strategyId", column: "strategy_id", labelZh: "策略", labelEn: "Strategy", type: "text", reference: { table: "strategies", valueColumn: "id", labelColumns: ["name", "id"] } },
+      { name: "strategyVersionId", column: "strategy_version_id", labelZh: "策略版本", labelEn: "Strategy Version", type: "text", reference: { table: "strategy_versions", valueColumn: "id", labelColumns: ["id", "version"], metadataColumns: ["strategy_id"] } },
+      { name: "reviewSessionId", column: "review_session_id", labelZh: "复盘会话", labelEn: "Review Session", type: "text", reference: { table: "review_sessions", valueColumn: "id", labelColumns: ["id", "scope"] } },
+      { name: "question", column: "question", labelZh: "问题/范围", labelEn: "Question", type: "textarea", required: true },
+      { name: "model", column: "model", labelZh: "模型", labelEn: "Model", type: "text", defaultValue: "local-structured-workflow" },
+      { name: "status", column: "status", labelZh: "状态", labelEn: "Status", type: "select", options: ["draft", "completed", "failed"], defaultValue: "draft" },
+      { name: "finalSummary", column: "final_summary", labelZh: "最终摘要", labelEn: "Final Summary", type: "textarea", required: true }
     ]
   },
   {
