@@ -243,6 +243,19 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(result.getByText("模型搜索研判")).toBeVisible();
   await expect(result.getByText("模型检索后认为仍需核对财报和复盘条件。")).toBeVisible();
   await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
+  const layoutOrder = await panel.evaluate((element) => {
+    const resultElement = element.querySelector('[data-testid="ai-stock-picks-result"]');
+    const historyElement = element.querySelector('[data-testid="ai-stock-picks-history"]');
+    if (!resultElement || !historyElement) {
+      throw new Error("AI stock picks result and history sections should both be rendered.");
+    }
+
+    return {
+      resultTop: resultElement.getBoundingClientRect().top,
+      historyTop: historyElement.getBoundingClientRect().top
+    };
+  });
+  expect(layoutOrder.historyTop).toBeGreaterThan(layoutOrder.resultTop);
   await result.getByRole("button", { name: "补资料" }).click();
   expect(actionRequests[0]).toMatchObject({ candidateId: "CAND-2026-001", actionRoute: "CollectEvidence" });
   await expect(result.getByText("已选：补资料")).toBeVisible();

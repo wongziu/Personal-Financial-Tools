@@ -530,51 +530,6 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
           </Button>
         </div>
 
-        <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-history">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <HistoryIcon className="size-4 text-primary" />
-              {localize(language, "历史运行", "Run History")}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={loadHistory} disabled={isLoadingHistory}>
-              <RefreshCwIcon data-icon="inline-start" />
-              {localize(language, "刷新记录", "Refresh")}
-            </Button>
-          </div>
-          {historyError ? <div className="mb-2 text-sm text-destructive">{historyError}</div> : null}
-          {history.length > 0 ? (
-            <div className="grid gap-2">
-              {history.map((record) => (
-                <div key={record.strategyRunId} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{record.runDate}</span>
-                      <Badge variant="outline">{record.strategyName}</Badge>
-                      {record.market ? <Badge variant="secondary">{record.market}</Badge> : null}
-                    </div>
-                    <div className="mt-1 line-clamp-2 text-sm">{record.finalSummary}</div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant={selectedHistoryId === record.strategyRunId ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => showHistoryRecord(record)}
-                  >
-                    <HistoryIcon data-icon="inline-start" />
-                    {localize(language, "查看本次记录", "View Run")}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-md border border-dashed bg-background p-3 text-sm text-muted-foreground">
-              {isLoadingHistory
-                ? localize(language, "正在读取历史运行...", "Loading run history...")
-                : localize(language, "暂无历史运行。执行一次选股后会自动记录，后续可复盘。", "No run history yet. Refresh picks once to create a reviewable record.")}
-            </div>
-          )}
-        </div>
-
         {progressStages.length > 0 ? (
           <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-progress">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -687,6 +642,51 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
             {localize(language, "点击“立即更新选股”后，这里会显示候选标的、行动建议、入选原因和风险。", "Click Refresh Picks to show candidates, actions, rationale, and risks.")}
           </div>
         )}
+
+        <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-history">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <HistoryIcon className="size-4 text-primary" />
+              {localize(language, "历史运行", "Run History")}
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={loadHistory} disabled={isLoadingHistory}>
+              <RefreshCwIcon data-icon="inline-start" />
+              {localize(language, "刷新记录", "Refresh")}
+            </Button>
+          </div>
+          {historyError ? <div className="mb-2 text-sm text-destructive">{historyError}</div> : null}
+          {history.length > 0 ? (
+            <div className="grid gap-2">
+              {history.map((record) => (
+                <div key={record.strategyRunId} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{record.runDate}</span>
+                      <Badge variant="outline">{record.strategyName}</Badge>
+                      {record.market ? <Badge variant="secondary">{record.market}</Badge> : null}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-sm">{record.finalSummary}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={selectedHistoryId === record.strategyRunId ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => showHistoryRecord(record)}
+                  >
+                    <HistoryIcon data-icon="inline-start" />
+                    {localize(language, "查看本次记录", "View Run")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed bg-background p-3 text-sm text-muted-foreground">
+              {isLoadingHistory
+                ? localize(language, "正在读取历史运行...", "Loading run history...")
+                : localize(language, "暂无历史运行。执行一次选股后会自动记录，后续可复盘。", "No run history yet. Refresh picks once to create a reviewable record.")}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
