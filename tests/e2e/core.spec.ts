@@ -97,60 +97,118 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
 
 test("runs AI self-directed stock picking from the research workspace", async ({ page }) => {
   const requests: Array<Record<string, unknown>> = [];
-  await page.route("**/api/research-iteration-workflow", async (route) => {
+  const actionRequests: Array<Record<string, unknown>> = [];
+  const historyRun = {
+    strategyRunId: "SRUN-2026-000",
+    runId: "AIRUN-2026-000",
+    runDate: "2026-06-12",
+    strategyId: "STRAT-CORE-GROWTH",
+    strategyName: "核心成长观察策略",
+    strategyVersionId: "STRAT-CORE-GROWTH-V1",
+    market: "US",
+    universe: "active-research",
+    universeSummary: "美股候选池 1 个标的",
+    status: "Completed",
+    finalSummary: "上一轮策略运行已记录，可用于复盘。",
+    candidates: [
+      {
+        id: "CAND-2026-000",
+        securityId: "US-MSFT",
+        securityName: "Microsoft Corp.",
+        lifecycleBucket: "observed",
+        rank: 1,
+        fitScore: 72,
+        recommendation: "CollectEvidence",
+        matchedRules: ["证据数=0"],
+        missingEvidence: ["缺少 A/B 级本地信息来源"],
+        riskFlags: [],
+        nextAction: "先补资料。",
+        actionStatus: "Open"
+      }
+    ]
+  };
+  const currentRun = {
+    triggerType: "strategy-run",
+    runId: "AIRUN-2026-001",
+    strategyId: "STRAT-CORE-GROWTH",
+    strategyVersionId: "STRAT-CORE-GROWTH-V1",
+    strategyRunId: "SRUN-2026-001",
+    market: "US",
+    universe: "active-research",
+    finalSummary: "策略「核心成长观察策略」完成本地候选筛选。",
+    stages: [
+      {
+        id: "screening",
+        title: "筛选 Agent",
+        status: "completed",
+        inputSummary: "candidates=2",
+        output: "Apple Inc. enters the candidate review queue.",
+        latencyMs: 0
+      }
+    ],
+    candidates: [
+      {
+        id: "CAND-2026-001",
+        securityId: "US-AAPL",
+        securityName: "Apple Inc.",
+        lifecycleBucket: "observed",
+        rank: 1,
+        fitScore: 80,
+        recommendation: "DraftDecision",
+        matchedRules: ["证据数=2"],
+        missingEvidence: ["缺少最近一次结构化复盘结论"],
+        riskFlags: ["风险主题：AI Capex"],
+        nextAction: "生成交易决策草案前先确认仓位上限。",
+        actionStatus: "Open",
+        modelAssessment: {
+          mode: "model",
+          model: "openai:test-model@default",
+          searchStatus: "searched",
+          summary: "模型检索后认为仍需核对财报和复盘条件。",
+          judgement: "可推进",
+          suggestedAction: "进入交易草案前补齐复盘条件。",
+          evidenceHighlights: ["财报线索支持需求韧性"],
+          unresolvedGaps: ["缺少结构化复盘"],
+          searchQueries: ["Apple latest filing demand guidance"]
+        }
+      }
+    ],
+    reviewFindings: []
+  };
+  await page.route("**/api/research-iteration-workflow**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ history: [historyRun] })
+      });
+      return;
+    }
+
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      actionRequests.push(body);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          candidate: {
+            ...currentRun.candidates[0],
+            actionRoute: body.actionRoute,
+            actionStatus: "Selected",
+            actionNote: body.actionNote,
+            actionUpdatedAt: "2026-06-12T14:00:00.000Z"
+          }
+        })
+      });
+      return;
+    }
+
     requests.push(route.request().postDataJSON() as Record<string, unknown>);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        result: {
-          triggerType: "strategy-run",
-          runId: "AIRUN-2026-001",
-          strategyId: "STRAT-CORE-GROWTH",
-          strategyVersionId: "STRAT-CORE-GROWTH-V1",
-          strategyRunId: "SRUN-2026-001",
-          market: "US",
-          universe: "active-research",
-          finalSummary: "策略「核心成长观察策略」完成本地候选筛选。",
-          stages: [
-            {
-              id: "screening",
-              title: "筛选 Agent",
-              status: "completed",
-              inputSummary: "candidates=2",
-              output: "Apple Inc. enters the candidate review queue.",
-              latencyMs: 0
-            }
-          ],
-          candidates: [
-            {
-              id: "CAND-2026-001",
-              securityId: "US-AAPL",
-              securityName: "Apple Inc.",
-              lifecycleBucket: "observed",
-              rank: 1,
-              fitScore: 80,
-              recommendation: "DraftDecision",
-              matchedRules: ["证据数=2"],
-              missingEvidence: ["缺少最近一次结构化复盘结论"],
-              riskFlags: ["风险主题：AI Capex"],
-              nextAction: "生成交易决策草案前先确认仓位上限。",
-              modelAssessment: {
-                mode: "model",
-                model: "openai:test-model@default",
-                searchStatus: "searched",
-                summary: "模型检索后认为仍需核对财报和复盘条件。",
-                judgement: "可推进",
-                suggestedAction: "进入交易草案前补齐复盘条件。",
-                evidenceHighlights: ["财报线索支持需求韧性"],
-                unresolvedGaps: ["缺少结构化复盘"],
-                searchQueries: ["Apple latest filing demand guidance"]
-              }
-            }
-          ],
-          reviewFindings: []
-        }
-      })
+      body: JSON.stringify({ result: currentRun })
     });
   });
 
@@ -159,6 +217,10 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   const panel = page.getByTestId("ai-stock-picks-panel");
 
   await expect(panel.getByText("AI 自驱选股")).toBeVisible();
+  await expect(panel.getByText("历史运行", { exact: true })).toBeVisible();
+  await expect(panel.getByTestId("ai-stock-picks-history").getByText("上一轮策略运行已记录，可用于复盘。")).toBeVisible();
+  await panel.getByRole("button", { name: "查看本次记录" }).click();
+  await expect(panel.getByText("1. Microsoft Corp.")).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股市场" })).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股范围" })).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股范围" })).toContainText("默认研究范围");
@@ -181,6 +243,9 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(result.getByText("模型搜索研判")).toBeVisible();
   await expect(result.getByText("模型检索后认为仍需核对财报和复盘条件。")).toBeVisible();
   await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
+  await result.getByRole("button", { name: "补资料" }).click();
+  expect(actionRequests[0]).toMatchObject({ candidateId: "CAND-2026-001", actionRoute: "CollectEvidence" });
+  await expect(result.getByText("已选：补资料")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {

@@ -219,6 +219,8 @@ export const strategyRuns = sqliteTable("strategy_runs", {
   strategyId: text("strategy_id").notNull(),
   strategyVersionId: text("strategy_version_id"),
   runDate: text("run_date").notNull(),
+  market: text("market"),
+  universe: text("universe"),
   universeSummary: text("universe_summary").notNull(),
   status: text("status").notNull(),
   finalSummary: text("final_summary").notNull(),
@@ -235,7 +237,12 @@ export const strategyCandidates = sqliteTable("strategy_candidates", {
   matchedRules: text("matched_rules").notNull(),
   missingEvidence: text("missing_evidence").notNull(),
   riskFlags: text("risk_flags").notNull(),
-  nextAction: text("next_action").notNull()
+  nextAction: text("next_action").notNull(),
+  modelAssessment: text("model_assessment"),
+  actionRoute: text("action_route"),
+  actionStatus: text("action_status").notNull().default("Open"),
+  actionNote: text("action_note").notNull().default(""),
+  actionUpdatedAt: text("action_updated_at")
 });
 
 export const thesisEvidence = sqliteTable("thesis_evidence", {

@@ -16,8 +16,11 @@ import {
 export type ResearchIterationTriggerType = "strategy-run" | "target-diagnosis" | "review-session";
 export type ResearchIterationMarket = "all" | "A-Share" | "HK" | "US";
 export type ResearchIterationUniverse = SecurityLifecycleUniverse;
+export type ResearchIterationActionRoute = "Observe" | "CollectEvidence" | "CreateThesis" | "DraftDecision" | "Skip";
+export type ResearchIterationActionStatus = "Open" | "Selected";
 
 const researchIterationMarkets: ResearchIterationMarket[] = ["all", "A-Share", "HK", "US"];
+const researchIterationActionRoutes: ResearchIterationActionRoute[] = ["Observe", "CollectEvidence", "CreateThesis", "DraftDecision", "Skip"];
 
 export interface ResearchIterationWorkflowInput {
   triggerType: ResearchIterationTriggerType;
@@ -39,17 +42,22 @@ export interface ResearchIterationStage {
 
 export interface ResearchIterationCandidate {
   id: string;
+  strategyRunId?: string;
   securityId: string;
   securityName: string;
   lifecycleBucket: SecurityLifecycleBucket;
   rank: number;
   fitScore: number;
-  recommendation: "Observe" | "CollectEvidence" | "CreateThesis" | "DraftDecision" | "Skip";
+  recommendation: ResearchIterationActionRoute;
   matchedRules: string[];
   missingEvidence: string[];
   riskFlags: string[];
   nextAction: string;
   modelAssessment?: ResearchIterationModelAssessment;
+  actionRoute?: ResearchIterationActionRoute;
+  actionStatus?: ResearchIterationActionStatus;
+  actionNote?: string;
+  actionUpdatedAt?: string;
 }
 
 export interface ResearchIterationModelAssessment {
@@ -86,6 +94,21 @@ export interface ResearchIterationWorkflowResult {
   stages: ResearchIterationStage[];
   candidates: ResearchIterationCandidate[];
   reviewFindings: ResearchIterationFinding[];
+}
+
+export interface ResearchIterationStrategyRunRecord {
+  strategyRunId: string;
+  runId?: string;
+  runDate: string;
+  strategyId: string;
+  strategyName: string;
+  strategyVersionId?: string;
+  market?: ResearchIterationMarket;
+  universe?: ResearchIterationUniverse;
+  universeSummary: string;
+  status: string;
+  finalSummary: string;
+  candidates: ResearchIterationCandidate[];
 }
 
 const localWorkflowModel = "local-structured-workflow";
@@ -158,6 +181,47 @@ function stringArrayFromJson(value: unknown): string[] {
   return value.map(stringFromJsonItem).map((item) => item.trim()).filter(Boolean).slice(0, 6);
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseModelAssessment(value: unknown): ResearchIterationModelAssessment | undefined {
+  const row = parseJsonObject(value);
+  if (!row) {
+    return undefined;
+  }
+
+  const mode: ResearchIterationModelAssessment["mode"] = row.mode === "model" ? "model" : "unavailable";
+  const searchStatus: ResearchIterationModelAssessment["searchStatus"] =
+    row.searchStatus === "searched" || row.searchStatus === "model-only" || row.searchStatus === "unavailable"
+      ? row.searchStatus
+      : mode === "model" ? "model-only" : "unavailable";
+  return {
+    mode,
+    model: typeof row.model === "string" ? row.model : undefined,
+    searchStatus,
+    summary: modelText(row.summary, ""),
+    judgement: modelText(row.judgement, ""),
+    suggestedAction: modelText(row.suggestedAction, ""),
+    evidenceHighlights: stringArrayFromJson(row.evidenceHighlights),
+    unresolvedGaps: stringArrayFromJson(row.unresolvedGaps),
+    searchQueries: stringArrayFromJson(row.searchQueries)
+  };
+}
+
 function modelText(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
@@ -166,11 +230,27 @@ function jsonText(items: string[]): string {
   return JSON.stringify(items);
 }
 
+function actionRouteFromValue(value: unknown): ResearchIterationActionRoute | undefined {
+  return researchIterationActionRoutes.includes(value as ResearchIterationActionRoute) ? value as ResearchIterationActionRoute : undefined;
+}
+
+function actionStatusFromValue(value: unknown): ResearchIterationActionStatus {
+  return value === "Selected" ? "Selected" : "Open";
+}
+
 export function normalizeResearchIterationMarket(value: unknown): ResearchIterationMarket {
   return researchIterationMarkets.includes(value as ResearchIterationMarket) ? value as ResearchIterationMarket : "all";
 }
 
 export { normalizeSecurityLifecycleUniverse as normalizeResearchIterationUniverse };
+
+export function normalizeResearchIterationActionRoute(value: unknown): ResearchIterationActionRoute {
+  if (researchIterationActionRoutes.includes(value as ResearchIterationActionRoute)) {
+    return value as ResearchIterationActionRoute;
+  }
+
+  throw new Error("Unsupported research iteration action route.");
+}
 
 function marketLabel(market: ResearchIterationMarket): string {
   const labels: Record<ResearchIterationMarket, string> = {
@@ -442,10 +522,21 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
   database.sqlite
     .prepare(
       `INSERT INTO strategy_runs (
-        id, strategy_id, strategy_version_id, run_date, universe_summary, status, final_summary, created_agent_run_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        id, strategy_id, strategy_version_id, run_date, market, universe, universe_summary, status, final_summary, created_agent_run_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(strategyRunId, strategyId, strategyVersionId ?? null, today(), `${marketName}候选池 ${securities.length} 个标的`, "Completed", finalSummary, runId);
+    .run(
+      strategyRunId,
+      strategyId,
+      strategyVersionId ?? null,
+      today(),
+      market,
+      universe,
+      `${marketName}候选池 ${securities.length} 个标的`,
+      "Completed",
+      finalSummary,
+      runId
+    );
 
   const candidateStatement = database.sqlite.prepare(
     `INSERT INTO strategy_candidates (
@@ -455,7 +546,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
   );
   const candidates = rawCandidates.map((candidate, index) => {
     const id = nextBusinessId(database, "CAND");
-    const ranked = { ...candidate, id, rank: index + 1 };
+    const ranked = { ...candidate, id, rank: index + 1, actionStatus: "Open" as const };
     candidateStatement.run(
       id,
       strategyRunId,
@@ -637,6 +728,9 @@ export async function runResearchIterationWorkflowWithModel(
     })));
   candidatesToAssess.forEach((candidate, index) => {
     candidate.modelAssessment = assessments[index];
+    database.sqlite
+      .prepare("UPDATE strategy_candidates SET model_assessment = ? WHERE id = ?")
+      .run(JSON.stringify(assessments[index]), candidate.id);
   });
 
   const modelCount = result.candidates.filter((candidate) => candidate.modelAssessment?.mode === "model").length;
@@ -837,6 +931,111 @@ function runReviewWorkflow(database: DatabaseContext, input: ResearchIterationWo
     candidates: [],
     reviewFindings: findings
   };
+}
+
+function candidateFromRow(row: Row, lifecycleById: Map<string, SecurityLifecycleEntry>): ResearchIterationCandidate {
+  const securityId = String(row.security_id);
+  const lifecycle = lifecycleById.get(securityId);
+  return {
+    id: String(row.id),
+    strategyRunId: String(row.strategy_run_id),
+    securityId,
+    securityName: stringValue(row.security_name, securityId),
+    lifecycleBucket: lifecycle?.bucket ?? "blocked",
+    rank: Number(row.rank ?? 0),
+    fitScore: Number(row.fit_score ?? 0),
+    recommendation: normalizeResearchIterationActionRoute(row.recommendation),
+    matchedRules: parseStringArray(row.matched_rules),
+    missingEvidence: parseStringArray(row.missing_evidence),
+    riskFlags: parseStringArray(row.risk_flags),
+    nextAction: stringValue(row.next_action),
+    modelAssessment: parseModelAssessment(row.model_assessment),
+    actionRoute: actionRouteFromValue(row.action_route),
+    actionStatus: actionStatusFromValue(row.action_status),
+    actionNote: stringValue(row.action_note),
+    actionUpdatedAt: row.action_updated_at ? String(row.action_updated_at) : undefined
+  };
+}
+
+function loadResearchIterationCandidate(database: DatabaseContext, candidateId: string): ResearchIterationCandidate {
+  const row = firstRow(
+    database,
+    `SELECT strategy_candidates.*, securities.name AS security_name
+     FROM strategy_candidates
+     LEFT JOIN securities ON securities.id = strategy_candidates.security_id
+     WHERE strategy_candidates.id = ?`,
+    candidateId
+  );
+  if (!row) {
+    throw new Error(`Strategy candidate ${candidateId} was not found.`);
+  }
+
+  return candidateFromRow(row, getSecurityLifecycleMap(database));
+}
+
+export function listResearchIterationStrategyRuns(
+  database: DatabaseContext,
+  options: { limit?: number } = {}
+): ResearchIterationStrategyRunRecord[] {
+  const limit = Math.max(1, Math.min(options.limit ?? 6, 20));
+  const lifecycleById = getSecurityLifecycleMap(database);
+  const runRows = allRows(
+    database,
+    `SELECT strategy_runs.*, strategies.name AS strategy_name
+     FROM strategy_runs
+     LEFT JOIN strategies ON strategies.id = strategy_runs.strategy_id
+     ORDER BY strategy_runs.rowid DESC
+     LIMIT ?`,
+    limit
+  );
+
+  return runRows.map((runRow) => {
+    const candidateRows = allRows(
+      database,
+      `SELECT strategy_candidates.*, securities.name AS security_name
+       FROM strategy_candidates
+       LEFT JOIN securities ON securities.id = strategy_candidates.security_id
+       WHERE strategy_candidates.strategy_run_id = ?
+       ORDER BY strategy_candidates.rank ASC, strategy_candidates.rowid ASC`,
+      runRow.id
+    );
+    return {
+      strategyRunId: String(runRow.id),
+      runId: runRow.created_agent_run_id ? String(runRow.created_agent_run_id) : undefined,
+      runDate: String(runRow.run_date),
+      strategyId: String(runRow.strategy_id),
+      strategyName: stringValue(runRow.strategy_name, String(runRow.strategy_id)),
+      strategyVersionId: runRow.strategy_version_id ? String(runRow.strategy_version_id) : undefined,
+      market: runRow.market ? normalizeResearchIterationMarket(runRow.market) : undefined,
+      universe: runRow.universe ? normalizeSecurityLifecycleUniverse(runRow.universe) : undefined,
+      universeSummary: String(runRow.universe_summary),
+      status: String(runRow.status),
+      finalSummary: String(runRow.final_summary),
+      candidates: candidateRows.map((candidateRow) => candidateFromRow(candidateRow, lifecycleById))
+    };
+  });
+}
+
+export function selectResearchIterationCandidateAction(
+  database: DatabaseContext,
+  input: { candidateId: string; actionRoute: ResearchIterationActionRoute; actionNote?: string }
+): ResearchIterationCandidate {
+  const actionRoute = normalizeResearchIterationActionRoute(input.actionRoute);
+  const existing = firstRow(database, "SELECT id FROM strategy_candidates WHERE id = ?", input.candidateId);
+  if (!existing) {
+    throw new Error(`Strategy candidate ${input.candidateId} was not found.`);
+  }
+
+  const actionUpdatedAt = new Date().toISOString();
+  database.sqlite
+    .prepare(
+      `UPDATE strategy_candidates
+       SET action_route = ?, action_status = 'Selected', action_note = ?, action_updated_at = ?
+       WHERE id = ?`
+    )
+    .run(actionRoute, input.actionNote?.trim() ?? "", actionUpdatedAt, input.candidateId);
+
+  return loadResearchIterationCandidate(database, input.candidateId);
 }
 
 export function runResearchIterationWorkflow(database: DatabaseContext, input: ResearchIterationWorkflowInput): ResearchIterationWorkflowResult {

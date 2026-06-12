@@ -2,7 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import { defaultAppSettings } from "@/lib/app-settings";
 import { createDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
-import { runResearchIterationWorkflow, runResearchIterationWorkflowWithModel } from "@/lib/research-iteration-workflow";
+import {
+  listResearchIterationStrategyRuns,
+  runResearchIterationWorkflow,
+  runResearchIterationWorkflowWithModel,
+  selectResearchIterationCandidateAction
+} from "@/lib/research-iteration-workflow";
 
 function insertSecurity(database: ReturnType<typeof createDatabase>, id: string) {
   database.sqlite
@@ -248,6 +253,43 @@ describe("research AI iteration workflow", () => {
     expect(result.candidates[0].modelAssessment?.summary).toContain("沪深300ETF");
     expect(result.candidates[0].modelAssessment?.evidenceHighlights[0]).toContain("基金公告");
     expect(result.candidates[0].modelAssessment?.suggestedAction).toContain("补齐公告");
+
+    const persistedCandidate = database.sqlite
+      .prepare("SELECT model_assessment FROM strategy_candidates WHERE id = ?")
+      .get(result.candidates[0].id) as { model_assessment: string | null };
+    expect(persistedCandidate.model_assessment).toContain("沪深300ETF");
+
+    const history = listResearchIterationStrategyRuns(database, { limit: 3 });
+    expect(history[0].strategyRunId).toBe(result.strategyRunId);
+    expect(history[0].candidates[0].modelAssessment?.suggestedAction).toContain("补齐公告");
+    expect(history[0].candidates[0].actionStatus).toBe("Open");
+  });
+
+  test("records a selected next action route for a strategy candidate", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const result = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run the strategy before choosing next action."
+    });
+
+    const updated = selectResearchIterationCandidateAction(database, {
+      candidateId: result.candidates[0].id,
+      actionRoute: "CollectEvidence",
+      actionNote: "先查最近财报和风险提示，再决定是否进入论点。"
+    });
+
+    expect(updated.id).toBe(result.candidates[0].id);
+    expect(updated.actionRoute).toBe("CollectEvidence");
+    expect(updated.actionStatus).toBe("Selected");
+    expect(updated.actionNote).toContain("最近财报");
+
+    const history = listResearchIterationStrategyRuns(database, { limit: 1 });
+    expect(history[0].candidates[0].actionRoute).toBe("CollectEvidence");
+    expect(history[0].candidates[0].actionStatus).toBe("Selected");
+    expect(history[0].candidates[0].actionNote).toContain("最近财报");
   });
 
   test("runs a target diagnosis workflow for a selected security", () => {

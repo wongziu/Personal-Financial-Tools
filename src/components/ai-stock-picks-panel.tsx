@@ -1,7 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertCircleIcon, BrainCircuitIcon, CheckCircle2Icon, Loader2Icon, RefreshCwIcon, XIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircleIcon,
+  BrainCircuitIcon,
+  CheckCircle2Icon,
+  ClipboardCheckIcon,
+  EyeIcon,
+  FileTextIcon,
+  HistoryIcon,
+  Loader2Icon,
+  RefreshCwIcon,
+  SearchIcon,
+  XCircleIcon,
+  XIcon
+} from "lucide-react";
 import { toast } from "sonner";
 import { FieldLabel } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
@@ -12,7 +25,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Language } from "@/lib/i18n";
 import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
-import type { ResearchIterationWorkflowResult, ResearchIterationCandidate, ResearchIterationMarket, ResearchIterationUniverse } from "@/lib/research-iteration-workflow";
+import type {
+  ResearchIterationActionRoute,
+  ResearchIterationCandidate,
+  ResearchIterationMarket,
+  ResearchIterationStrategyRunRecord,
+  ResearchIterationUniverse,
+  ResearchIterationWorkflowResult
+} from "@/lib/research-iteration-workflow";
 
 function localize(language: Language, zh: string, en: string): string {
   return language === "en-US" ? en : translateText(zh, language);
@@ -65,6 +85,14 @@ const universeOptions: Array<{ value: ResearchIterationUniverse; zh: string; en:
   { value: "researchable", zh: "全部可研究", en: "All Researchable" }
 ];
 
+const actionRouteOptions: Array<{ value: ResearchIterationActionRoute; zh: string; en: string; icon: typeof SearchIcon }> = [
+  { value: "CollectEvidence", zh: "补资料", en: "Collect Evidence", icon: SearchIcon },
+  { value: "CreateThesis", zh: "建论点", en: "Create Thesis", icon: FileTextIcon },
+  { value: "DraftDecision", zh: "生成草案", en: "Draft Decision", icon: ClipboardCheckIcon },
+  { value: "Observe", zh: "加入观察", en: "Observe", icon: EyeIcon },
+  { value: "Skip", zh: "暂不行动", en: "Skip", icon: XCircleIcon }
+];
+
 const lifecycleLabels: Record<string, { zh: string; en: string }> = {
   observed: { zh: "观察池", en: "Watchlist" },
   holding: { zh: "持仓中", en: "Holding" },
@@ -110,6 +138,11 @@ function lifecycleLabel(bucket: string | undefined, language: Language): string 
   return localize(language, label.zh, label.en);
 }
 
+function actionRouteLabel(route: ResearchIterationActionRoute | undefined, language: Language): string {
+  const option = actionRouteOptions.find((item) => item.value === route);
+  return option ? localize(language, option.zh, option.en) : localize(language, "未选择", "Not Selected");
+}
+
 function createProgressStages(language: Language): ProgressStage[] {
   return progressTemplates.map((stage) => ({
     id: stage.id,
@@ -133,6 +166,70 @@ function completeProgressFromResult(result: ResearchIterationWorkflowResult): Pr
   }));
 }
 
+function resultFromHistoryRecord(record: ResearchIterationStrategyRunRecord): ResearchIterationWorkflowResult {
+  return {
+    triggerType: "strategy-run",
+    runId: record.runId ?? record.strategyRunId,
+    strategyId: record.strategyId,
+    strategyVersionId: record.strategyVersionId,
+    strategyRunId: record.strategyRunId,
+    market: record.market,
+    universe: record.universe,
+    finalSummary: record.finalSummary,
+    stages: [],
+    candidates: record.candidates,
+    reviewFindings: []
+  };
+}
+
+function historyRecordFromResult(
+  result: ResearchIterationWorkflowResult,
+  strategies: ReferenceOption[]
+): ResearchIterationStrategyRunRecord | null {
+  if (!result.strategyRunId || !result.strategyId) {
+    return null;
+  }
+
+  return {
+    strategyRunId: result.strategyRunId,
+    runId: result.runId,
+    runDate: new Date().toISOString().slice(0, 10),
+    strategyId: result.strategyId,
+    strategyName: strategies.find((strategy) => strategy.value === result.strategyId)?.label ?? result.strategyId,
+    strategyVersionId: result.strategyVersionId,
+    market: result.market,
+    universe: result.universe,
+    universeSummary: result.market ?? "all",
+    status: "Completed",
+    finalSummary: result.finalSummary,
+    candidates: result.candidates
+  };
+}
+
+function replaceCandidateInResult(
+  result: ResearchIterationWorkflowResult | null,
+  updatedCandidate: ResearchIterationCandidate
+): ResearchIterationWorkflowResult | null {
+  if (!result) {
+    return result;
+  }
+
+  return {
+    ...result,
+    candidates: result.candidates.map((candidate) => candidate.id === updatedCandidate.id ? updatedCandidate : candidate)
+  };
+}
+
+function replaceCandidateInHistory(
+  history: ResearchIterationStrategyRunRecord[],
+  updatedCandidate: ResearchIterationCandidate
+): ResearchIterationStrategyRunRecord[] {
+  return history.map((record) => ({
+    ...record,
+    candidates: record.candidates.map((candidate) => candidate.id === updatedCandidate.id ? updatedCandidate : candidate)
+  }));
+}
+
 export function AiStockPicksPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
   const { language, t } = useLanguage();
   const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
@@ -141,6 +238,11 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const [securityId, setSecurityId] = useState("");
   const [result, setResult] = useState<ResearchIterationWorkflowResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [history, setHistory] = useState<ResearchIterationStrategyRunRecord[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [savingCandidateId, setSavingCandidateId] = useState("");
   const [progressStages, setProgressStages] = useState<ProgressStage[]>([]);
   const [progressError, setProgressError] = useState("");
   const filteredSecurities = useMemo(
@@ -193,6 +295,75 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
     setResult(null);
   };
 
+  const loadHistory = useCallback(() => {
+    setIsLoadingHistory(true);
+    setHistoryError("");
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/research-iteration-workflow?limit=6");
+        const payload = (await response.json()) as { history?: ResearchIterationStrategyRunRecord[]; error?: string };
+        if (!response.ok || !payload.history) {
+          const message = payload.error ?? t.formError;
+          setHistoryError(message);
+          return;
+        }
+
+        setHistory(payload.history);
+        const firstHistoryId = payload.history[0]?.strategyRunId ?? "";
+        setSelectedHistoryId((current) => current || firstHistoryId);
+        setResult((current) => current ?? (payload.history?.[0] ? resultFromHistoryRecord(payload.history[0]) : null));
+      } catch (error) {
+        setHistoryError(error instanceof Error ? error.message : t.formError);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    })();
+  }, [t.formError]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  const showHistoryRecord = (record: ResearchIterationStrategyRunRecord) => {
+    setSelectedHistoryId(record.strategyRunId);
+    setResult(resultFromHistoryRecord(record));
+    setProgressStages([]);
+    setProgressError("");
+  };
+
+  const selectCandidateAction = (candidate: ResearchIterationCandidate, actionRoute: ResearchIterationActionRoute) => {
+    setSavingCandidateId(candidate.id);
+    const actionNote = [
+      actionRouteLabel(actionRoute, language),
+      candidate.modelAssessment?.suggestedAction ?? candidate.nextAction
+    ].filter(Boolean).join("：");
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/research-iteration-workflow", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidateId: candidate.id, actionRoute, actionNote })
+        });
+        const payload = (await response.json()) as { candidate?: ResearchIterationCandidate; error?: string };
+        if (!response.ok || !payload.candidate) {
+          const message = payload.error ?? t.formError;
+          toast.error(message);
+          return;
+        }
+
+        setResult((current) => replaceCandidateInResult(current, payload.candidate!));
+        setHistory((current) => replaceCandidateInHistory(current, payload.candidate!));
+        toast.success(localize(language, "下一行动路线已记录", "Next action recorded"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t.formError);
+      } finally {
+        setSavingCandidateId("");
+      }
+    })();
+  };
+
   const runStockPicker = () => {
     const initialStages = createProgressStages(language);
     const timers = progressTemplates.map((_, index) => window.setTimeout(() => {
@@ -238,6 +409,11 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
         }
 
         setResult(payload.result);
+        const historyRecord = historyRecordFromResult(payload.result, strategies);
+        if (historyRecord) {
+          setHistory((current) => [historyRecord, ...current.filter((record) => record.strategyRunId !== historyRecord.strategyRunId)].slice(0, 6));
+          setSelectedHistoryId(historyRecord.strategyRunId);
+        }
         setProgressStages(completeProgressFromResult(payload.result));
         toast.success(localize(language, "AI 自驱选股已更新", "AI stock picks updated"));
       } catch (error) {
@@ -354,6 +530,51 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
           </Button>
         </div>
 
+        <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-history">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <HistoryIcon className="size-4 text-primary" />
+              {localize(language, "历史运行", "Run History")}
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={loadHistory} disabled={isLoadingHistory}>
+              <RefreshCwIcon data-icon="inline-start" />
+              {localize(language, "刷新记录", "Refresh")}
+            </Button>
+          </div>
+          {historyError ? <div className="mb-2 text-sm text-destructive">{historyError}</div> : null}
+          {history.length > 0 ? (
+            <div className="grid gap-2">
+              {history.map((record) => (
+                <div key={record.strategyRunId} className="grid gap-3 rounded-md border bg-background p-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{record.runDate}</span>
+                      <Badge variant="outline">{record.strategyName}</Badge>
+                      {record.market ? <Badge variant="secondary">{record.market}</Badge> : null}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-sm">{record.finalSummary}</div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={selectedHistoryId === record.strategyRunId ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => showHistoryRecord(record)}
+                  >
+                    <HistoryIcon data-icon="inline-start" />
+                    {localize(language, "查看本次记录", "View Run")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed bg-background p-3 text-sm text-muted-foreground">
+              {isLoadingHistory
+                ? localize(language, "正在读取历史运行...", "Loading run history...")
+                : localize(language, "暂无历史运行。执行一次选股后会自动记录，后续可复盘。", "No run history yet. Refresh picks once to create a reviewable record.")}
+            </div>
+          )}
+        </div>
+
         {progressStages.length > 0 ? (
           <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-progress">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -417,6 +638,36 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
                         ) : null}
                       </div>
                     ) : null}
+                    <div className="mt-3 rounded-md border bg-muted/10 p-2">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-semibold">{localize(language, "下一行动路线", "Next Action Route")}</span>
+                        <Badge variant={candidate.actionStatus === "Selected" ? "secondary" : "outline"}>
+                          {candidate.actionStatus === "Selected" && candidate.actionRoute
+                            ? `${localize(language, "已选", "Selected")}：${actionRouteLabel(candidate.actionRoute, language)}`
+                            : localize(language, "未选择", "Not Selected")}
+                        </Badge>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {actionRouteOptions.map((option) => {
+                          const Icon = option.icon;
+                          return (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant={candidate.actionRoute === option.value ? "secondary" : "outline"}
+                              size="sm"
+                              className="justify-start"
+                              disabled={savingCandidateId === candidate.id}
+                              onClick={() => selectCandidateAction(candidate, option.value)}
+                            >
+                              <Icon data-icon="inline-start" />
+                              {localize(language, option.zh, option.en)}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      {candidate.actionNote ? <div className="mt-2 text-xs text-muted-foreground">{candidate.actionNote}</div> : null}
+                    </div>
                     <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                       <div>{localize(language, "入选原因", "Why")}: {candidate.matchedRules.join("；")}</div>
                       <div>{localize(language, "缺口", "Gaps")}: {candidate.missingEvidence.join("；") || "N/A"}</div>

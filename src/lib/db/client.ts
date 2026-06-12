@@ -20,6 +20,13 @@ function ensureDirectory(databasePath: string): void {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 }
 
+function ensureColumn(sqlite: Database.Database, table: string, column: string, definition: string): void {
+  const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((existingColumn) => existingColumn.name === column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+  }
+}
+
 export function createDatabase(databasePath = process.env.INVESTMENT_DB_PATH ?? defaultDatabasePath): DatabaseContext {
   ensureDirectory(databasePath);
   const sqlite = new Database(databasePath);
@@ -246,6 +253,8 @@ export function initializeDatabase(sqlite: Database.Database): void {
       strategy_id TEXT NOT NULL,
       strategy_version_id TEXT,
       run_date TEXT NOT NULL,
+      market TEXT,
+      universe TEXT,
       universe_summary TEXT NOT NULL,
       status TEXT NOT NULL,
       final_summary TEXT NOT NULL,
@@ -261,7 +270,12 @@ export function initializeDatabase(sqlite: Database.Database): void {
       matched_rules TEXT NOT NULL,
       missing_evidence TEXT NOT NULL,
       risk_flags TEXT NOT NULL,
-      next_action TEXT NOT NULL
+      next_action TEXT NOT NULL,
+      model_assessment TEXT,
+      action_route TEXT,
+      action_status TEXT NOT NULL DEFAULT 'Open',
+      action_note TEXT NOT NULL DEFAULT '',
+      action_updated_at TEXT
     );
     CREATE TABLE IF NOT EXISTS thesis_evidence (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -393,6 +407,14 @@ export function initializeDatabase(sqlite: Database.Database): void {
   for (const setting of defaultSystemSettingRows) {
     insertSetting.run(setting.key, setting.value);
   }
+
+  ensureColumn(sqlite, "strategy_runs", "market", "market TEXT");
+  ensureColumn(sqlite, "strategy_runs", "universe", "universe TEXT");
+  ensureColumn(sqlite, "strategy_candidates", "model_assessment", "model_assessment TEXT");
+  ensureColumn(sqlite, "strategy_candidates", "action_route", "action_route TEXT");
+  ensureColumn(sqlite, "strategy_candidates", "action_status", "action_status TEXT NOT NULL DEFAULT 'Open'");
+  ensureColumn(sqlite, "strategy_candidates", "action_note", "action_note TEXT NOT NULL DEFAULT ''");
+  ensureColumn(sqlite, "strategy_candidates", "action_updated_at", "action_updated_at TEXT");
 
   const accountColumns = sqlite.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>;
   if (!accountColumns.some((column) => column.name === "account_name")) {
