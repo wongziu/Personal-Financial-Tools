@@ -143,6 +143,20 @@ function actionRouteLabel(route: ResearchIterationActionRoute | undefined, langu
   return option ? localize(language, option.zh, option.en) : localize(language, "未选择", "Not Selected");
 }
 
+function marketOptionLabel(value: ResearchIterationMarket | undefined, language: Language): string {
+  const option = marketOptions.find((item) => item.value === value);
+  return option ? localize(language, option.zh, option.en) : localize(language, "全部", "All");
+}
+
+function universeOptionLabel(value: ResearchIterationUniverse | undefined, language: Language): string {
+  const option = universeOptions.find((item) => item.value === value);
+  return option ? localize(language, option.zh, option.en) : localize(language, "默认研究范围", "Default Research");
+}
+
+function countLabel(value: number, language: Language): string {
+  return language === "en-US" ? `${value}` : `${value} 个`;
+}
+
 function createProgressStages(language: Language): ProgressStage[] {
   return progressTemplates.map((stage) => ({
     id: stage.id,
@@ -228,6 +242,66 @@ function replaceCandidateInHistory(
     ...record,
     candidates: record.candidates.map((candidate) => candidate.id === updatedCandidate.id ? updatedCandidate : candidate)
   }));
+}
+
+function StockPickRunSummary({
+  result,
+  strategies,
+  language
+}: {
+  result: ResearchIterationWorkflowResult;
+  strategies: ReferenceOption[];
+  language: Language;
+}) {
+  const strategyLabel = strategies.find((strategy) => strategy.value === result.strategyId)?.label ?? result.strategyId ?? "N/A";
+  const draftCount = result.candidates.filter((candidate) => candidate.recommendation === "DraftDecision").length;
+  const modelCount = result.candidates.filter((candidate) => candidate.modelAssessment?.mode === "model").length;
+  const modelUnavailableCount = result.candidates.filter((candidate) => candidate.modelAssessment?.mode === "unavailable").length;
+  const stats = [
+    {
+      label: localize(language, "策略", "Strategy"),
+      value: strategyLabel
+    },
+    {
+      label: localize(language, "市场 / 范围", "Market / Universe"),
+      value: `${marketOptionLabel(result.market, language)} / ${universeOptionLabel(result.universe, language)}`
+    },
+    {
+      label: localize(language, "候选标的", "Candidates"),
+      value: countLabel(result.candidates.length, language)
+    },
+    {
+      label: localize(language, "可进草案", "Draft-ready"),
+      value: countLabel(draftCount, language)
+    },
+    {
+      label: localize(language, "模型研判", "Model Research"),
+      value: localize(language, `${modelCount} 已补充 / ${modelUnavailableCount} 未执行`, `${modelCount} completed / ${modelUnavailableCount} unavailable`)
+    }
+  ];
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-summary">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <CheckCircle2Icon className="size-4 text-emerald-600" />
+          {localize(language, "运行摘要", "Run Summary")}
+        </div>
+        <Badge variant="secondary">{localize(language, "本次结果", "Current Run")}</Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        {stats.map((item) => (
+          <div key={item.label} className="min-h-16 rounded-md border bg-background px-3 py-2">
+            <div className="text-xs text-muted-foreground">{item.label}</div>
+            <div className="mt-1 text-sm font-semibold leading-snug">{item.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-md border bg-background px-3 py-2 text-sm leading-relaxed">
+        {result.finalSummary}
+      </div>
+    </div>
+  );
 }
 
 export function AiStockPicksPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
@@ -553,7 +627,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
 
         {result ? (
           <div className="grid gap-3" data-testid="ai-stock-picks-result">
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">{result.finalSummary}</div>
+            <StockPickRunSummary result={result} strategies={strategies} language={language} />
             {result.candidates.length > 0 ? (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {result.candidates.map((candidate) => (
