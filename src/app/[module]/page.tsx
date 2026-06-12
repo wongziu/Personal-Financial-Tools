@@ -3,6 +3,7 @@ import { ModulePage } from "@/components/module-page";
 import { TradeDecisionsPage, type TradeDecisionReferenceOptions } from "@/components/trade-decisions-page";
 import { getSeededDatabase } from "@/lib/app-db";
 import { buildModuleReferenceOptions, findModuleDefinition, listModuleRows } from "@/lib/modules";
+import { getSecurityLifecycleEntries } from "@/lib/security-lifecycle";
 import { getPriceEntrySecurities, type Row } from "@/lib/services";
 
 export const dynamic = "force-dynamic";
@@ -54,5 +55,14 @@ export default async function DynamicModulePage({ params }: { params: Promise<{ 
   const rows = listModuleRows(database, definition);
   const referenceOptions = buildModuleReferenceOptions(database, definition);
   const priceEntrySecurities = module === "prices" ? getPriceEntrySecurities(database) : [];
-  return <ModulePage definition={definition} rows={rows} referenceOptions={referenceOptions} priceEntrySecurities={priceEntrySecurities} />;
+  const securityLifecycleEntries = module === "securities" ? getSecurityLifecycleEntries(database) : [];
+  return (
+    <ModulePage
+      definition={definition}
+      rows={rows}
+      referenceOptions={referenceOptions}
+      priceEntrySecurities={priceEntrySecurities}
+      securityLifecycleEntries={securityLifecycleEntries}
+    />
+  );
 }

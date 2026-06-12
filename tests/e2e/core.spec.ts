@@ -196,6 +196,22 @@ test("localizes securities list fields and values across three languages", async
   await expect(page.getByText("Allowed").first()).toBeVisible();
 });
 
+test("separates securities list by lifecycle buckets", async ({ page }) => {
+  await page.goto("/securities");
+
+  const lifecycleFilter = page.getByTestId("security-lifecycle-filter");
+  await expect(lifecycleFilter.getByText("标的分层")).toBeVisible();
+  await expect(lifecycleFilter.getByRole("button", { name: /持仓中\s+2/ })).toBeVisible();
+  await expect(lifecycleFilter.getByRole("button", { name: /观察池\s+0/ })).toBeVisible();
+  await expect(page.locator('tbody [data-column="name"]').filter({ hasText: "Apple Inc." })).toContainText("持仓中");
+
+  await lifecycleFilter.getByRole("button", { name: /观察池\s+0/ }).click();
+
+  await expect(page.getByText("Apple Inc.")).toBeHidden();
+  await expect(page.getByText("沪深300ETF")).toBeHidden();
+  await expect(page.getByText("暂无记录")).toBeVisible();
+});
+
 test("shows hover help for securities form fields", async ({ page }) => {
   await page.goto("/securities");
 

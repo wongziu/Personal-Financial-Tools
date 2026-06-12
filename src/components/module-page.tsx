@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { ModuleDefinition, ModuleField, ModuleReferenceOptions, ReferenceOption } from "@/lib/modules";
 import { isFieldReadOnlyOnEdit, isModuleRowEditable } from "@/lib/module-records";
+import type { SecurityLifecycleBucket, SecurityLifecycleEntry } from "@/lib/security-lifecycle";
 import type { PriceEntrySecurity, Row } from "@/lib/services";
 import { useAppSettings } from "@/components/app-settings-provider";
 import { FxQuickPanel } from "@/components/fx-quick-panel";
@@ -49,6 +50,23 @@ import {
 } from "@/lib/module-interactions";
 import type { MarketChangeColorMode } from "@/lib/market-change";
 import { cn } from "@/lib/utils";
+
+type SecurityLifecycleFilter = SecurityLifecycleBucket | "all";
+
+const securityLifecycleFilterOrder: SecurityLifecycleFilter[] = ["all", "holding", "observed", "candidate", "exited", "blocked"];
+
+const securityLifecycleLabels: Record<SecurityLifecycleBucket, { zh: string; en: string }> = {
+  observed: { zh: "观察池", en: "Watchlist" },
+  holding: { zh: "持仓中", en: "Holding" },
+  exited: { zh: "已退出复盘", en: "Exited Review" },
+  candidate: { zh: "候选池", en: "Candidate Pool" },
+  blocked: { zh: "禁用", en: "Blocked" }
+};
+
+const securityLifecycleFilterLabels: Record<SecurityLifecycleFilter, { zh: string; en: string }> = {
+  all: { zh: "全部", en: "All" },
+  ...securityLifecycleLabels
+};
 
 function displayValue(value: unknown, language: Language): string {
   if (value === null || value === undefined || value === "") {
@@ -466,8 +484,28 @@ function recordDisplayName(row: Row, language: Language): string {
   return displayValue(row.name ?? row.source_name ?? row.label ?? row.id ?? row.code ?? row.security_id ?? row.account_id ?? row._rowid, language);
 }
 
+function localizeTextPair(language: Language, zh: string, en: string): string {
+  return language === "en-US" ? en : translateText(zh, language);
+}
+
 function localizeField(field: ModuleField, language: Language): string {
-  return language === "en-US" ? field.labelEn : translateText(field.labelZh, language);
+  return localizeTextPair(language, field.labelZh, field.labelEn);
+}
+
+function securityLifecycleLabel(bucket: SecurityLifecycleFilter, language: Language): string {
+  const label = securityLifecycleFilterLabels[bucket];
+  return localizeTextPair(language, label.zh, label.en);
+}
+
+function securityLifecycleBadgeClass(bucket: SecurityLifecycleBucket): string {
+  const classes: Record<SecurityLifecycleBucket, string> = {
+    holding: "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+    observed: "border-transparent bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
+    candidate: "border-transparent bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+    exited: "border-transparent bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200",
+    blocked: "border-transparent bg-destructive/10 text-destructive"
+  };
+  return classes[bucket];
 }
 
 function weekdayLabels(language: Language): string[] {
@@ -908,12 +946,14 @@ export function ModulePage({
   definition,
   rows,
   referenceOptions = {},
-  priceEntrySecurities = []
+  priceEntrySecurities = [],
+  securityLifecycleEntries = []
 }: {
   definition: ModuleDefinition;
   rows: Row[];
   referenceOptions?: ModuleReferenceOptions;
   priceEntrySecurities?: PriceEntrySecurity[];
+  securityLifecycleEntries?: SecurityLifecycleEntry[];
 }) {
   const router = useRouter();
   const { language, t } = useLanguage();
@@ -930,8 +970,13 @@ export function ModulePage({
   const [selectedMonth, setSelectedMonth] = useState(() => (initialDateColumn ? getDefaultMonth(rows, initialDateColumn) : new Date().toISOString().slice(0, 7)));
   const [selectedDay, setSelectedDay] = useState<string | undefined>(undefined);
   const [dateSort, setDateSort] = useState<DateSortState | undefined>(undefined);
+  const [securityLifecycleFilter, setSecurityLifecycleFilter] = useState<SecurityLifecycleFilter>("all");
   const [isPending, startTransition] = useTransition();
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialFormValues(definition));
+  const lifecycleBySecurityId = useMemo(
+    () => new Map(securityLifecycleEntries.map((entry) => [entry.id, entry])),
+    [securityLifecycleEntries]
+  );
 
   const searchedRows = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -942,21 +987,51 @@ export function ModulePage({
     return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(normalized));
   }, [query, rows]);
 
+  const lifecycleFilteredRows = useMemo(() => {
+    if (definition.id !== "securities" || securityLifecycleFilter === "all") {
+      return searchedRows;
+    }
+
+    return searchedRows.filter((row) => (lifecycleBySecurityId.get(String(row.id))?.bucket ?? "blocked") === securityLifecycleFilter);
+  }, [definition.id, lifecycleBySecurityId, searchedRows, securityLifecycleFilter]);
+
+  const securityLifecycleCounts = useMemo(() => {
+    const counts: Record<SecurityLifecycleFilter, number> = {
+      all: searchedRows.length,
+      observed: 0,
+      holding: 0,
+      exited: 0,
+      candidate: 0,
+      blocked: 0
+    };
+
+    if (definition.id !== "securities") {
+      return counts;
+    }
+
+    for (const row of searchedRows) {
+      const bucket = lifecycleBySecurityId.get(String(row.id))?.bucket ?? "blocked";
+      counts[bucket] += 1;
+    }
+
+    return counts;
+  }, [definition.id, lifecycleBySecurityId, searchedRows]);
+
   const filteredRows = useMemo(
     () =>
-      filterRowsByDate(searchedRows, selectedDateColumn, {
+      filterRowsByDate(lifecycleFilteredRows, selectedDateColumn, {
         mode: dateFilterMode,
         month: selectedMonth,
         day: selectedDay
       }),
-    [dateFilterMode, searchedRows, selectedDateColumn, selectedDay, selectedMonth]
+    [dateFilterMode, lifecycleFilteredRows, selectedDateColumn, selectedDay, selectedMonth]
   );
 
   const tableRows = useMemo(() => sortRowsByDate(filteredRows, dateSort), [dateSort, filteredRows]);
 
   const calendarDays = useMemo(
-    () => (selectedDateColumn ? buildCalendarMonth(searchedRows, selectedDateColumn, selectedMonth) : []),
-    [searchedRows, selectedDateColumn, selectedMonth]
+    () => (selectedDateColumn ? buildCalendarMonth(lifecycleFilteredRows, selectedDateColumn, selectedMonth) : []),
+    [lifecycleFilteredRows, selectedDateColumn, selectedMonth]
   );
 
   const summary = useMemo(() => summarizeRows(rows, filteredRows, selectedDateColumn), [filteredRows, rows, selectedDateColumn]);
@@ -965,7 +1040,11 @@ export function ModulePage({
   const description = language === "en-US" ? definition.descriptionEn : translateText(definition.descriptionZh, language);
   const selectedDateField = dateFields.find((field) => field.column === selectedDateColumn);
   const currentDateRange = dateRangeLabel(dateFilterMode, selectedMonth, selectedDay, t);
-  const activeFilterLabel = query ? `${t.search}: ${query}` : dateFilterMode !== "all" ? currentDateRange : t.allDates;
+  const activeFilterLabel = [
+    query ? `${t.search}: ${query}` : undefined,
+    definition.id === "securities" && securityLifecycleFilter !== "all" ? securityLifecycleLabel(securityLifecycleFilter, language) : undefined,
+    dateFilterMode !== "all" ? currentDateRange : undefined
+  ].filter(Boolean).join(" · ") || (selectedDateColumn ? t.allDates : localizeTextPair(language, "全部", "All"));
   const weekDays = weekdayLabels(language);
   const isEditing = Boolean(editingRow);
 
@@ -1082,6 +1161,45 @@ export function ModulePage({
       {definition.id === "prices" ? <PriceQuickPanel rows={rows} securities={priceEntrySecurities} /> : null}
       {definition.id === "sources" ? (
         <SourceIntelligencePanel securities={referenceOptions.securityId ?? []} onApplyDraft={applySourceDraft} />
+      ) : null}
+
+      {definition.id === "securities" ? (
+        <Card data-testid="security-lifecycle-filter">
+          <CardHeader className="gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="text-base">{localizeTextPair(language, "标的分层", "Security Buckets")}</CardTitle>
+              <CardDescription>
+                {localizeTextPair(language, "按持仓、观察、候选和退出状态查看标的。", "View securities by holding, watchlist, candidate, and exited states.")}
+              </CardDescription>
+            </div>
+            {securityLifecycleFilter !== "all" ? (
+              <Button variant="outline" size="sm" onClick={() => setSecurityLifecycleFilter("all")}>
+                <FilterXIcon data-icon="inline-start" />
+                {localizeTextPair(language, "清除分层", "Clear Bucket")}
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {securityLifecycleFilterOrder.map((bucket) => (
+                <Button
+                  key={bucket}
+                  type="button"
+                  variant={securityLifecycleFilter === bucket ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={securityLifecycleFilter === bucket}
+                  onClick={() => setSecurityLifecycleFilter(bucket)}
+                  className="min-w-24 justify-between gap-2"
+                >
+                  <span>{securityLifecycleLabel(bucket, language)}</span>
+                  <Badge variant={securityLifecycleFilter === bucket ? "secondary" : "outline"} className="px-1.5 py-0 text-[11px]">
+                    {securityLifecycleCounts[bucket]}
+                  </Badge>
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       <div className={`grid gap-3 md:grid-cols-2 ${selectedDateColumn ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
@@ -1321,10 +1439,22 @@ export function ModulePage({
                       const field = fieldByColumn.get(column);
                       const options = field ? referenceOptions[field.name] : undefined;
                       const value = options ? displayReferenceValue(row[column], options, language) : row[column];
+                      const securityLifecycle = definition.id === "securities" && column === "name"
+                        ? lifecycleBySecurityId.get(String(row.id))
+                        : undefined;
 
                       return (
                         <TableCell key={column} data-column={column} rowSpan={rowSpan > 1 ? rowSpan : undefined} className={rowSpan > 1 ? "align-middle" : undefined}>
-                          <TableDisplayValue column={column} field={field} value={value} language={language} marketChangeColorMode={marketChangeColorMode} />
+                          {securityLifecycle ? (
+                            <div className="flex min-w-0 flex-col gap-1.5">
+                              <TableDisplayValue column={column} field={field} value={value} language={language} marketChangeColorMode={marketChangeColorMode} />
+                              <Badge className={cn("w-fit", securityLifecycleBadgeClass(securityLifecycle.bucket))} data-lifecycle-bucket={securityLifecycle.bucket}>
+                                {securityLifecycleLabel(securityLifecycle.bucket, language)}
+                              </Badge>
+                            </div>
+                          ) : (
+                            <TableDisplayValue column={column} field={field} value={value} language={language} marketChangeColorMode={marketChangeColorMode} />
+                          )}
                         </TableCell>
                       );
                     })}
