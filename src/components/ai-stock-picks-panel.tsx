@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { BrainCircuitIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircleIcon, BrainCircuitIcon, CheckCircle2Icon, Loader2Icon, RefreshCwIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 import { FieldLabel } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Language } from "@/lib/i18n";
 import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
-import type { ResearchIterationWorkflowResult, ResearchIterationCandidate, ResearchIterationMarket } from "@/lib/research-iteration-workflow";
+import type { ResearchIterationWorkflowResult, ResearchIterationCandidate, ResearchIterationMarket, ResearchIterationUniverse } from "@/lib/research-iteration-workflow";
 
 function localize(language: Language, zh: string, en: string): string {
   return language === "en-US" ? en : translateText(zh, language);
@@ -56,18 +56,96 @@ const marketOptions: Array<{ value: ResearchIterationMarket; zh: string; en: str
   { value: "US", zh: "美股", en: "U.S." }
 ];
 
+const universeOptions: Array<{ value: ResearchIterationUniverse; zh: string; en: string }> = [
+  { value: "active-research", zh: "默认研究范围", en: "Default Research" },
+  { value: "observed", zh: "观察池", en: "Watchlist" },
+  { value: "holding", zh: "持仓中", en: "Holdings" },
+  { value: "candidate", zh: "候选池", en: "Candidate Pool" },
+  { value: "exited", zh: "已退出复盘", en: "Exited Review" },
+  { value: "researchable", zh: "全部可研究", en: "All Researchable" }
+];
+
+const lifecycleLabels: Record<string, { zh: string; en: string }> = {
+  observed: { zh: "观察池", en: "Watchlist" },
+  holding: { zh: "持仓中", en: "Holding" },
+  exited: { zh: "已退出复盘", en: "Exited Review" },
+  candidate: { zh: "候选池", en: "Candidate Pool" },
+  blocked: { zh: "禁用", en: "Blocked" }
+};
+
+const progressTemplates = [
+  { id: "strategy", zh: "读取策略", en: "Read Strategy" },
+  { id: "universe", zh: "整理标的池", en: "Prepare Universe" },
+  { id: "coverage", zh: "检查资料与论点", en: "Check Evidence" },
+  { id: "screening", zh: "筛选候选", en: "Screen Candidates" },
+  { id: "advice", zh: "生成行动建议", en: "Generate Actions" }
+] as const;
+
+type ProgressStatus = "queued" | "running" | "completed" | "failed";
+
+interface ProgressStage {
+  id: string;
+  title: string;
+  status: ProgressStatus;
+}
+
 function matchesMarket(security: ReferenceOption, market: ResearchIterationMarket): boolean {
   return market === "all" || security.metadata.market === market;
+}
+
+function matchesUniverse(security: ReferenceOption, universe: ResearchIterationUniverse): boolean {
+  const bucket = security.metadata.lifecycleBucket;
+  if (universe === "active-research") {
+    return ["observed", "holding", "candidate"].includes(bucket);
+  }
+  if (universe === "researchable") {
+    return ["observed", "holding", "candidate", "exited"].includes(bucket);
+  }
+  return bucket === universe;
+}
+
+function lifecycleLabel(bucket: string | undefined, language: Language): string {
+  const label = lifecycleLabels[bucket ?? ""] ?? lifecycleLabels.blocked;
+  return localize(language, label.zh, label.en);
+}
+
+function createProgressStages(language: Language): ProgressStage[] {
+  return progressTemplates.map((stage) => ({
+    id: stage.id,
+    title: localize(language, stage.zh, stage.en),
+    status: "queued"
+  }));
+}
+
+function advanceProgress(stages: ProgressStage[], index: number): ProgressStage[] {
+  return stages.map((stage, stageIndex) => ({
+    ...stage,
+    status: stageIndex < index ? "completed" : stageIndex === index ? "running" : "queued"
+  }));
+}
+
+function completeProgressFromResult(result: ResearchIterationWorkflowResult): ProgressStage[] {
+  return result.stages.map((stage) => ({
+    id: stage.id,
+    title: stage.title,
+    status: stage.status === "completed" ? "completed" : "failed"
+  }));
 }
 
 export function AiStockPicksPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
   const { language, t } = useLanguage();
   const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
   const [market, setMarket] = useState<ResearchIterationMarket>("all");
+  const [universe, setUniverse] = useState<ResearchIterationUniverse>("active-research");
   const [securityId, setSecurityId] = useState("");
   const [result, setResult] = useState<ResearchIterationWorkflowResult | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const filteredSecurities = useMemo(() => securities.filter((security) => matchesMarket(security, market)), [market, securities]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [progressStages, setProgressStages] = useState<ProgressStage[]>([]);
+  const [progressError, setProgressError] = useState("");
+  const filteredSecurities = useMemo(
+    () => securities.filter((security) => matchesMarket(security, market) && matchesUniverse(security, universe)),
+    [market, securities, universe]
+  );
 
   const updateStrategy = (value: string) => {
     setStrategyId(value);
@@ -78,13 +156,29 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
     const nextMarket = value as ResearchIterationMarket;
     setMarket(nextMarket);
     setResult(null);
+    setProgressStages([]);
     setSecurityId((currentSecurityId) => {
       if (!currentSecurityId) {
         return "";
       }
 
       const currentSecurity = securities.find((security) => security.value === currentSecurityId);
-      return currentSecurity && matchesMarket(currentSecurity, nextMarket) ? currentSecurityId : "";
+      return currentSecurity && matchesMarket(currentSecurity, nextMarket) && matchesUniverse(currentSecurity, universe) ? currentSecurityId : "";
+    });
+  };
+
+  const updateUniverse = (value: string) => {
+    const nextUniverse = value as ResearchIterationUniverse;
+    setUniverse(nextUniverse);
+    setResult(null);
+    setProgressStages([]);
+    setSecurityId((currentSecurityId) => {
+      if (!currentSecurityId) {
+        return "";
+      }
+
+      const currentSecurity = securities.find((security) => security.value === currentSecurityId);
+      return currentSecurity && matchesMarket(currentSecurity, market) && matchesUniverse(currentSecurity, nextUniverse) ? currentSecurityId : "";
     });
   };
 
@@ -99,38 +193,62 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   };
 
   const runStockPicker = () => {
-    startTransition(async () => {
+    const initialStages = createProgressStages(language);
+    const timers = progressTemplates.map((_, index) => window.setTimeout(() => {
+      setProgressStages((current) => advanceProgress(current.length > 0 ? current : initialStages, index));
+    }, index * 220));
+    setProgressStages(advanceProgress(initialStages, 0));
+    setProgressError("");
+    setIsRunning(true);
+
+    void (async () => {
       const requestBody: {
         triggerType: "strategy-run";
         strategyId: string;
         market: ResearchIterationMarket;
+        universe: ResearchIterationUniverse;
         securityId?: string;
         question: string;
       } = {
         triggerType: "strategy-run",
         strategyId,
         market,
+        universe,
         question: "基于内置策略更新自驱选股候选，给出买入、观察或暂不买入建议。"
       };
       if (securityId) {
         requestBody.securityId = securityId;
       }
 
-      const response = await fetch("/api/research-iteration-workflow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      });
-      const payload = (await response.json()) as { result?: ResearchIterationWorkflowResult; error?: string };
+      try {
+        const response = await fetch("/api/research-iteration-workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody)
+        });
+        const payload = (await response.json()) as { result?: ResearchIterationWorkflowResult; error?: string };
 
-      if (!response.ok || !payload.result) {
-        toast.error(payload.error ?? t.formError);
-        return;
+        if (!response.ok || !payload.result) {
+          const message = payload.error ?? t.formError;
+          setProgressError(message);
+          setProgressStages((current) => current.map((stage) => stage.status === "running" ? { ...stage, status: "failed" } : stage));
+          toast.error(message);
+          return;
+        }
+
+        setResult(payload.result);
+        setProgressStages(completeProgressFromResult(payload.result));
+        toast.success(localize(language, "AI 自驱选股已更新", "AI stock picks updated"));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t.formError;
+        setProgressError(message);
+        setProgressStages((current) => current.map((stage) => stage.status === "running" ? { ...stage, status: "failed" } : stage));
+        toast.error(message);
+      } finally {
+        timers.forEach((timer) => window.clearTimeout(timer));
+        setIsRunning(false);
       }
-
-      setResult(payload.result);
-      toast.success(localize(language, "AI 自驱选股已更新", "AI stock picks updated"));
-    });
+    })();
   };
 
   return (
@@ -152,7 +270,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
         {result ? <Badge variant="secondary">{localize(language, "已更新", "Updated")}</Badge> : null}
       </CardHeader>
       <CardContent className="grid gap-4">
-        <div className="grid gap-3 xl:grid-cols-[minmax(180px,240px)_minmax(140px,180px)_minmax(220px,1fr)_auto] xl:items-end">
+        <div className="grid gap-3 xl:grid-cols-[minmax(180px,240px)_minmax(140px,180px)_minmax(160px,220px)_minmax(220px,1fr)_auto] xl:items-end">
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "内置策略", "Built-in Strategy")} help="" />
             <Select value={strategyId} onValueChange={updateStrategy}>
@@ -182,6 +300,21 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
             </Select>
           </div>
           <div className="grid gap-1.5">
+            <FieldLabel label={localize(language, "选股范围", "Universe")} help="" />
+            <Select value={universe} onValueChange={updateUniverse}>
+              <SelectTrigger aria-label={localize(language, "选股范围", "Universe")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {universeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {localize(language, option.zh, option.en)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "参考标的", "Reference Security")} help="" />
             <div className="flex gap-2">
               <Select value={securityId} onValueChange={updateSecurity} disabled={filteredSecurities.length === 0}>
@@ -196,7 +329,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
                 </SelectTrigger>
                 <SelectContent>
                   {filteredSecurities.map((security) => (
-                    <SelectItem key={security.value} value={security.value}>{security.label}</SelectItem>
+                    <SelectItem key={security.value} value={security.value}>{security.label} · {lifecycleLabel(security.metadata.lifecycleBucket, language)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -214,11 +347,32 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
               </Button>
             </div>
           </div>
-          <Button onClick={runStockPicker} disabled={isPending || !strategyId}>
+          <Button onClick={runStockPicker} disabled={isRunning || !strategyId}>
             <RefreshCwIcon data-icon="inline-start" />
             {localize(language, "立即更新选股", "Refresh Picks")}
           </Button>
         </div>
+
+        {progressStages.length > 0 ? (
+          <div className="rounded-md border bg-muted/20 p-3" data-testid="ai-stock-picks-progress">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold">{localize(language, "Agent 进度", "Agent Progress")}</div>
+              {progressError ? <Badge variant="destructive">{localize(language, "失败", "Failed")}</Badge> : isRunning ? <Badge variant="secondary">{localize(language, "运行中", "Running")}</Badge> : <Badge variant="secondary">{localize(language, "已完成", "Completed")}</Badge>}
+            </div>
+            <div className="grid gap-2 md:grid-cols-5">
+              {progressStages.map((stage) => (
+                <div key={stage.id} className="flex min-h-10 items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs">
+                  {stage.status === "completed" ? <CheckCircle2Icon className="size-4 text-emerald-600" /> : null}
+                  {stage.status === "running" ? <Loader2Icon className="size-4 animate-spin text-primary" /> : null}
+                  {stage.status === "failed" ? <AlertCircleIcon className="size-4 text-destructive" /> : null}
+                  {stage.status === "queued" ? <span className="size-4 rounded-full border" aria-hidden /> : null}
+                  <span className="truncate">{stage.title}</span>
+                </div>
+              ))}
+            </div>
+            {progressError ? <div className="mt-3 text-sm text-destructive">{progressError}</div> : null}
+          </div>
+        ) : null}
 
         {result ? (
           <div className="grid gap-3" data-testid="ai-stock-picks-result">
@@ -232,7 +386,10 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
                         <div className="text-sm font-semibold">{candidate.rank}. {candidate.securityName}</div>
                         <div className="text-xs text-muted-foreground">{localize(language, "适配分", "Fit Score")} {candidate.fitScore}</div>
                       </div>
-                      <Badge variant={actionVariant(candidate)}>{actionLabel(candidate, language)}</Badge>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <Badge variant="outline">{lifecycleLabel(candidate.lifecycleBucket, language)}</Badge>
+                        <Badge variant={actionVariant(candidate)}>{actionLabel(candidate, language)}</Badge>
+                      </div>
                     </div>
                     <div className="mt-3 text-sm">{candidate.nextAction}</div>
                     <div className="mt-3 grid gap-1 text-xs text-muted-foreground">

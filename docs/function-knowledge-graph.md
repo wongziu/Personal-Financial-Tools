@@ -41,6 +41,10 @@ flowchart LR
   ResearchWs --> InfoAnalysis["信息分析"]
   ResearchWs --> AiPicks["AI 自驱选股"]
   ResearchWs --> MyDecisions["我的决策"]
+  Securities --> Lifecycle["标的生命周期推导"]
+  Transactions --> Lifecycle
+  Lifecycle --> AiPicks
+  Lifecycle --> MyDecisions
   InfoAnalysis --> Sources["信息来源"]
   InfoAnalysis --> Theses["投资论点"]
   AiPicks --> Strategies["策略库"]
@@ -131,6 +135,13 @@ flowchart LR
   ResearchWorkspace --> AiPicks["AI 自驱选股"]
   ResearchWorkspace --> MyDecisions["我的决策"]
 
+  Securities["标的主数据"] --> Lifecycle["标的生命周期推导"]
+  Transactions["已结算交易"] --> Lifecycle
+  Sources["information_sources"] --> Lifecycle
+  Theses["theses"] --> Lifecycle
+  ReviewEvents["review_events"] --> Lifecycle
+  TradeDecisions["trade_decisions"] --> Lifecycle
+
   ExternalText["外部资料文本或 URL"] --> InfoDraft["信息草稿"]
   InfoDraft --> Facts["最近资料事实"]
   Facts --> Opinions["当前投资观点"]
@@ -139,6 +150,8 @@ flowchart LR
   InfoAnalysis --> Opinions
 
   BuiltInStrategies["内置策略"] --> AiPicks
+  Lifecycle --> UniverseFilter["默认研究范围: 观察池 + 持仓中 + 候选池"]
+  UniverseFilter --> AiPicks
   AiPicks --> StrategyRunApi["POST /api/research-iteration-workflow"]
   StrategyRunApi --> CandidateCards["候选标的卡片"]
   CandidateCards --> ActionAdvice["买入 / 观察 / 补资料 / 暂不买入"]
@@ -147,8 +160,8 @@ flowchart LR
   MyDecisions --> ReviewReminders["观察与复核"]
   MyDecisions --> CompletedRecords["已完成记录"]
 
-  Facts -.-> Sources["information_sources"]
-  Opinions -.-> Theses["theses"]
+  Facts -.-> Sources
+  Opinions -.-> Theses
   BuiltInStrategies -.-> Strategies["strategies / strategy_versions"]
   StrategyRunApi -.-> StrategyAudit["research_agent_runs / strategy_runs / strategy_candidates"]
   PendingDecisions -.-> TradeDecisions["trade_decisions"]
@@ -160,6 +173,9 @@ flowchart LR
 
 - `/research` 主入口面向用户只暴露 `信息分析`、`AI 自驱选股`、`我的决策` 三个页签。
 - 来源智能只生成可审查草稿，不直接保存记录；用户确认后的结构化记录仍由底层模块表承接。
+- 标的生命周期由现有主数据、已结算交易和研究记录推导，区分 `观察池`、`持仓中`、`已退出复盘`、`候选池`、`禁用`，不写入新的手工状态字段。
+- `AI 自驱选股` 默认使用 `观察池 + 持仓中 + 候选池`，排除已退出标的；用户显式选择 `已退出复盘` 或 `全部可研究` 时才纳入已退出标的。
+- AI 选股运行时显示 agent 进度，避免用户只能看到按钮等待。
 - 策略、策略版本、策略运行、候选卡片、AI 运行记录仍存在，但在主工作台中是 AI 自驱选股的实现和审计层，不再作为一级用户页签。
 - 交易决策和复核事件在 `我的决策` 中按待确认、观察复核、已完成记录摘要展示；完整字段仍可通过底层模块路由维护。
 - 旧的单次 AI 分析和 Agent 工作流能力仍保留为 API/组件底座，当前主工作台优先呈现可读的策略选股结果。
@@ -207,7 +223,8 @@ flowchart LR
 | 信息分析 | 将外部资料整理成可读事实，并结合投资论点形成当前观点 | `src/app/research/page.tsx`, `src/app/api/source-intelligence/route.ts` | `information_sources`, `theses` | `src/components/research-workbench-panels.tsx`, `src/components/source-intelligence-panel.tsx`, `src/lib/source-intelligence.ts`, `src/lib/modules.ts` | `src/lib/source-intelligence.test.ts`, `tests/e2e/core.spec.ts` |
 | 信息来源 | 底层记录证据等级、关键事实、原始链接、论点影响 | `src/app/[module]/page.tsx`, `src/app/api/source-intelligence/route.ts` | `information_sources` | `src/lib/modules.ts`, `src/lib/source-intelligence.ts`, `src/components/source-intelligence-panel.tsx` | `src/lib/source-intelligence.test.ts`, `tests/e2e/core.spec.ts` |
 | 投资论点 | 底层记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
-| AI 自驱选股 | 从内置策略触发候选筛选，展示标的、建议动作、证据缺口和风险 | `src/app/research/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategies`, `strategy_versions`, `strategy_runs`, `strategy_candidates`, `research_agent_runs`, `research_agent_stages` | `src/components/ai-stock-picks-panel.tsx`, `src/components/research-workbench-panels.tsx`, `src/lib/research-iteration-workflow.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| 标的生命周期推导 | 从主数据、已结算交易和研究记录推导观察池、持仓中、已退出、候选池、禁用 | `src/app/research/page.tsx` | `securities`, `transactions`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/lib/security-lifecycle.ts`, `src/components/module-workspace.tsx` | `src/lib/security-lifecycle.test.ts`, `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
+| AI 自驱选股 | 从内置策略触发候选筛选，默认排除已退出标的，展示标的分层、建议动作、证据缺口、风险和 agent 进度 | `src/app/research/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategies`, `strategy_versions`, `strategy_runs`, `strategy_candidates`, `research_agent_runs`, `research_agent_stages` | `src/components/ai-stock-picks-panel.tsx`, `src/components/research-workbench-panels.tsx`, `src/lib/research-iteration-workflow.ts`, `src/lib/security-lifecycle.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/security-lifecycle.test.ts`, `tests/e2e/core.spec.ts` |
 | 策略库 | 底层维护散户慢频策略假设、证据门槛、风险预算和复盘频率 | `src/app/[module]/page.tsx` | `strategies` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
 | 策略版本 | 底层保存策略版本，复盘后通过新版本承接规则变化 | `src/app/[module]/page.tsx` | `strategy_versions` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
 | 策略运行 | 底层记录每次策略筛选的范围、摘要和关联 AI 运行 | `src/app/[module]/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategy_runs`, `research_agent_runs` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |

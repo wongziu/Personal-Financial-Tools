@@ -3,6 +3,76 @@ import { createDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
 import { runResearchIterationWorkflow } from "@/lib/research-iteration-workflow";
 
+function insertSecurity(database: ReturnType<typeof createDatabase>, id: string) {
+  database.sqlite
+    .prepare(
+      `INSERT INTO securities (
+        id, account_id, name, ticker, asset_type, market, currency,
+        industry_level_1, industry_level_2, risk_theme_tags, liquidity_level,
+        investment_status, benchmark, fee_note, complexity
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      "ACC-US-001",
+      id,
+      id,
+      "Stock",
+      "US",
+      "USD",
+      "InformationTechnology",
+      "Software",
+      "[]",
+      "High",
+      "Allowed",
+      "S&P 500",
+      "N/A",
+      "Simple"
+    );
+}
+
+function insertSettledTrade(database: ReturnType<typeof createDatabase>, input: {
+  id: string;
+  securityId: string;
+  type: "Buy" | "Sell";
+  date: string;
+  quantity: number;
+}) {
+  database.sqlite
+    .prepare(
+      `INSERT INTO transactions (
+        id, order_id, trade_date, trade_time, account_id, security_id, strategy_type,
+        thesis_id, decision_id, transaction_type, quantity, unit_price, gross_amount,
+        commission, tax, other_fees, currency, fx_rate, base_currency_amount,
+        status, data_source, correction_of_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      input.id,
+      input.id,
+      input.date,
+      "15:00",
+      "ACC-US-001",
+      input.securityId,
+      "Active",
+      null,
+      null,
+      input.type,
+      input.quantity,
+      10,
+      input.quantity * 10,
+      0,
+      0,
+      0,
+      "USD",
+      7.2,
+      input.quantity * 72,
+      "Settled",
+      "Test fill",
+      null
+    );
+}
+
 describe("research AI iteration workflow", () => {
   test("runs a strategy workflow and persists the run, stages, and candidates", () => {
     const database = createDatabase(":memory:");
@@ -35,6 +105,38 @@ describe("research AI iteration workflow", () => {
     expect(persistedRun).toEqual({ run_type: "strategy-run", strategy_id: "STRAT-CORE-GROWTH", status: "completed" });
     expect(stageCount.count).toBe(5);
     expect(candidateCount.count).toBe(result.candidates.length);
+  });
+
+  test("defaults strategy workflow away from exited securities and exposes lifecycle buckets", () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    insertSecurity(database, "US-EXITED");
+    insertSecurity(database, "US-CANDIDATE");
+    insertSettledTrade(database, { id: "TRD-EXIT-BUY", securityId: "US-EXITED", type: "Buy", date: "2026-01-01", quantity: 10 });
+    insertSettledTrade(database, { id: "TRD-EXIT-SELL", securityId: "US-EXITED", type: "Sell", date: "2026-02-01", quantity: 10 });
+
+    const defaultResult = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run default research universe."
+    });
+    const exitedResult = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      universe: "exited",
+      question: "Review exited securities."
+    });
+
+    expect(defaultResult.universe).toBe("active-research");
+    expect(defaultResult.candidates.map((candidate) => candidate.securityId)).toContain("US-CANDIDATE");
+    expect(defaultResult.candidates.map((candidate) => candidate.securityId)).not.toContain("US-EXITED");
+    expect(defaultResult.candidates.every((candidate) => ["holding", "observed", "candidate"].includes(candidate.lifecycleBucket))).toBe(true);
+    expect(exitedResult.universe).toBe("exited");
+    expect(exitedResult.candidates.map((candidate) => candidate.securityId)).toEqual(["US-EXITED"]);
+    expect(exitedResult.candidates[0].lifecycleBucket).toBe("exited");
+    expect(exitedResult.candidates[0].recommendation).not.toBe("DraftDecision");
   });
 
   test("limits strategy workflow candidates to the selected market", () => {

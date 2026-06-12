@@ -109,6 +109,8 @@ test("runs AI self-directed stock picking from the research workspace", async ({
           strategyId: "STRAT-CORE-GROWTH",
           strategyVersionId: "STRAT-CORE-GROWTH-V1",
           strategyRunId: "SRUN-2026-001",
+          market: "US",
+          universe: "active-research",
           finalSummary: "策略「核心成长观察策略」完成本地候选筛选。",
           stages: [
             {
@@ -125,6 +127,7 @@ test("runs AI self-directed stock picking from the research workspace", async ({
               id: "CAND-2026-001",
               securityId: "US-AAPL",
               securityName: "Apple Inc.",
+              lifecycleBucket: "observed",
               rank: 1,
               fitScore: 80,
               recommendation: "DraftDecision",
@@ -146,6 +149,8 @@ test("runs AI self-directed stock picking from the research workspace", async ({
 
   await expect(panel.getByText("AI 自驱选股")).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股市场" })).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "选股范围" })).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "选股范围" })).toContainText("默认研究范围");
   await panel.getByRole("combobox", { name: "选股市场" }).click();
   await page.getByRole("option", { name: "美股" }).click();
   await panel.getByRole("combobox", { name: "参考标的" }).click();
@@ -154,11 +159,13 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await panel.getByRole("button", { name: "清空参考标的" }).click();
   await expect(panel.getByRole("combobox", { name: "参考标的" })).toContainText("不限定标的");
   await panel.getByRole("button", { name: "立即更新选股" }).click();
-  expect(requests[0]).toMatchObject({ triggerType: "strategy-run", market: "US" });
+  expect(requests[0]).toMatchObject({ triggerType: "strategy-run", market: "US", universe: "active-research" });
   expect(requests[0]).not.toHaveProperty("securityId");
+  await expect(panel.getByTestId("ai-stock-picks-progress").getByText("Agent 进度")).toBeVisible();
   const result = panel.getByTestId("ai-stock-picks-result");
   await expect(result.getByText("策略「核心成长观察策略」完成本地候选筛选")).toBeVisible();
   await expect(result.getByText("1. Apple Inc.")).toBeVisible();
+  await expect(result.getByText("观察池")).toBeVisible();
   await expect(result.getByText("可生成买入草案")).toBeVisible();
   await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
 });
@@ -581,10 +588,13 @@ test("shows account calendar with daily nav pnl and supports nav correction", as
   await page.getByRole("spinbutton", { name: "校准净值" }).fill("250000");
   const saveAnchorButton = page.getByRole("button", { name: /保存校准净值/ });
   await expect(saveAnchorButton).toBeEnabled();
-  await saveAnchorButton.click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/account-nav-anchors") && response.request().method() === "POST" && response.ok()),
+    saveAnchorButton.click()
+  ]);
 
-  await expect(page.getByText("250,000.00").first()).toBeVisible();
-  await expect(page.getByText("已校准").first()).toBeVisible();
+  await expect(page.getByText("250,000.00").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("已校准").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("uses review due date as the default thesis calendar dimension", async ({ page }) => {

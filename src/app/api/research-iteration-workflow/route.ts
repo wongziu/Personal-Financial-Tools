@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSeededDatabase } from "@/lib/app-db";
 import {
   normalizeResearchIterationMarket,
+  normalizeResearchIterationUniverse,
   runResearchIterationWorkflow,
   type ResearchIterationTriggerType
 } from "@/lib/research-iteration-workflow";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       strategyId?: string;
       securityId?: string;
       market?: string;
+      universe?: string;
       question?: string;
     };
     const result = runResearchIterationWorkflow(getSeededDatabase(), {
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
       strategyId: body.strategyId,
       securityId: body.securityId,
       market: normalizeResearchIterationMarket(body.market),
+      universe: normalizeResearchIterationUniverse(body.universe),
       question: body.question
     });
 

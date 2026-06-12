@@ -9,6 +9,7 @@ import type { DatabaseContext } from "@/lib/db/client";
 import { buildModuleReferenceOptions, findModuleDefinition, listModuleRows } from "@/lib/modules";
 import type { ReferenceOption } from "@/lib/modules";
 import { getAccountCalendarData, getPriceEntrySecurities, type Row } from "@/lib/services";
+import { getSecurityLifecycleMap, securityLifecycleLabels } from "@/lib/security-lifecycle";
 
 export type WorkspaceTab =
   | { id: string; labelZh: string; labelEn: string; moduleId: string }
@@ -23,10 +24,20 @@ function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] 
   const securities = database.sqlite
     .prepare("SELECT id, name, ticker, market FROM securities ORDER BY rowid DESC")
     .all() as Row[];
+  const lifecycleById = getSecurityLifecycleMap(database);
   return securities.map((row) => ({
     value: String(row.id),
     label: [row.name, row.ticker].filter(Boolean).map(String).join(" · "),
-    metadata: { market: row.market === null || row.market === undefined ? "" : String(row.market) }
+    metadata: {
+      market: row.market === null || row.market === undefined ? "" : String(row.market),
+      lifecycleBucket: lifecycleById.get(String(row.id))?.bucket ?? "blocked",
+      lifecycleLabel: securityLifecycleLabels[lifecycleById.get(String(row.id))?.bucket ?? "blocked"].zh,
+      holdingQuantity: String(lifecycleById.get(String(row.id))?.holdingQuantity ?? 0),
+      sourceCount: String(lifecycleById.get(String(row.id))?.sourceCount ?? 0),
+      thesisCount: String(lifecycleById.get(String(row.id))?.thesisCount ?? 0),
+      reviewEventCount: String(lifecycleById.get(String(row.id))?.reviewEventCount ?? 0),
+      tradeDecisionCount: String(lifecycleById.get(String(row.id))?.tradeDecisionCount ?? 0)
+    }
   }));
 }
 

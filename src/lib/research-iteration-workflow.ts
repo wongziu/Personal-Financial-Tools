@@ -1,8 +1,19 @@
 import type { DatabaseContext } from "@/lib/db/client";
 import { nextBusinessId, type Row } from "@/lib/services";
+import {
+  getSecurityLifecycleMap,
+  normalizeSecurityLifecycleUniverse,
+  securityLifecycleLabels,
+  securityLifecycleMatchesUniverse,
+  securityLifecycleUniverseLabels,
+  type SecurityLifecycleBucket,
+  type SecurityLifecycleEntry,
+  type SecurityLifecycleUniverse
+} from "@/lib/security-lifecycle";
 
 export type ResearchIterationTriggerType = "strategy-run" | "target-diagnosis" | "review-session";
 export type ResearchIterationMarket = "all" | "A-Share" | "HK" | "US";
+export type ResearchIterationUniverse = SecurityLifecycleUniverse;
 
 const researchIterationMarkets: ResearchIterationMarket[] = ["all", "A-Share", "HK", "US"];
 
@@ -11,6 +22,7 @@ export interface ResearchIterationWorkflowInput {
   strategyId?: string;
   securityId?: string;
   market?: ResearchIterationMarket;
+  universe?: ResearchIterationUniverse;
   question?: string;
 }
 
@@ -27,6 +39,7 @@ export interface ResearchIterationCandidate {
   id: string;
   securityId: string;
   securityName: string;
+  lifecycleBucket: SecurityLifecycleBucket;
   rank: number;
   fitScore: number;
   recommendation: "Observe" | "CollectEvidence" | "CreateThesis" | "DraftDecision" | "Skip";
@@ -52,6 +65,7 @@ export interface ResearchIterationWorkflowResult {
   strategyRunId?: string;
   securityId?: string;
   market?: ResearchIterationMarket;
+  universe?: ResearchIterationUniverse;
   reviewSessionId?: string;
   finalSummary: string;
   stages: ResearchIterationStage[];
@@ -99,6 +113,8 @@ export function normalizeResearchIterationMarket(value: unknown): ResearchIterat
   return researchIterationMarkets.includes(value as ResearchIterationMarket) ? value as ResearchIterationMarket : "all";
 }
 
+export { normalizeSecurityLifecycleUniverse as normalizeResearchIterationUniverse };
+
 function marketLabel(market: ResearchIterationMarket): string {
   const labels: Record<ResearchIterationMarket, string> = {
     all: "全部市场",
@@ -107,6 +123,10 @@ function marketLabel(market: ResearchIterationMarket): string {
     US: "美股"
   };
   return labels[market];
+}
+
+function universeLabel(universe: ResearchIterationUniverse): string {
+  return securityLifecycleUniverseLabels[universe].zh;
 }
 
 function firstRow(database: DatabaseContext, sql: string, ...params: unknown[]): Row | undefined {
@@ -212,17 +232,25 @@ function insertStages(database: DatabaseContext, runId: string, stages: Research
   });
 }
 
-function buildCandidate(database: DatabaseContext, security: Row, rankSeed: number): Omit<ResearchIterationCandidate, "id" | "rank"> {
+function buildCandidate(database: DatabaseContext, security: Row, lifecycle: SecurityLifecycleEntry, rankSeed: number): Omit<ResearchIterationCandidate, "id" | "rank"> {
   const securityId = String(security.id);
   const sources = sourceRows(database, securityId);
   const theses = thesisRows(database, securityId);
   const decisions = decisionRows(database, securityId);
   const riskThemes = parseStringArray(security.risk_theme_tags);
-  const isAllowed = String(security.investment_status) === "Allowed";
+  const isAllowed = String(security.investment_status) !== "Prohibited" && lifecycle.bucket !== "blocked";
+  const canDraftDecision = String(security.investment_status) === "Allowed" && lifecycle.bucket !== "exited";
   const evidenceScore = Math.min(sources.length, 3) * 15;
   const thesisScore = Math.min(theses.length, 2) * 12;
   const decisionPenalty = decisions.some((decision) => Number(decision.touches_limits ?? 0) === 1) ? 12 : 0;
-  const fitScore = Math.max(0, Math.min(100, 45 + evidenceScore + thesisScore - decisionPenalty + (isAllowed ? 8 : -25) - rankSeed));
+  const lifecycleScore: Record<SecurityLifecycleBucket, number> = {
+    holding: 10,
+    observed: 8,
+    candidate: 5,
+    exited: -18,
+    blocked: -40
+  };
+  const fitScore = Math.max(0, Math.min(100, 45 + evidenceScore + thesisScore - decisionPenalty + (isAllowed ? 8 : -25) + lifecycleScore[lifecycle.bucket] - rankSeed));
   const missingEvidence = [
     sources.length === 0 ? "缺少 A/B 级本地信息来源" : "",
     theses.length === 0 ? "缺少已确认投资论点" : "",
@@ -231,18 +259,21 @@ function buildCandidate(database: DatabaseContext, security: Row, rankSeed: numb
   const riskFlags = [
     ...riskThemes.slice(0, 2).map((theme) => `风险主题：${theme}`),
     decisionPenalty > 0 ? "历史决策触及风险限制，需要先复核仓位" : "",
-    !isAllowed ? "标的当前不是 Allowed 状态" : ""
+    lifecycle.bucket === "exited" ? "该标的已退出，本轮仅用于复盘或重新观察" : "",
+    !isAllowed ? "标的当前不是可研究状态" : ""
   ].filter(Boolean);
   const recommendation: ResearchIterationCandidate["recommendation"] =
-    !isAllowed ? "Skip" : sources.length === 0 ? "CollectEvidence" : theses.length === 0 ? "CreateThesis" : "DraftDecision";
+    !isAllowed ? "Skip" : lifecycle.bucket === "exited" ? "Observe" : sources.length === 0 ? "CollectEvidence" : theses.length === 0 ? "CreateThesis" : canDraftDecision ? "DraftDecision" : "Observe";
 
   return {
     securityId,
     securityName: String(security.name),
+    lifecycleBucket: lifecycle.bucket,
     fitScore,
     recommendation,
     matchedRules: [
       `市场=${stringValue(security.market, "N/A")}`,
+      `分层=${securityLifecycleLabels[lifecycle.bucket].zh}`,
       `流动性=${stringValue(security.liquidity_level, "N/A")}`,
       sources.length > 0 ? `证据数=${sources.length}` : "证据数=0",
       theses.length > 0 ? `论点数=${theses.length}` : "论点数=0"
@@ -252,6 +283,8 @@ function buildCandidate(database: DatabaseContext, security: Row, rankSeed: numb
     nextAction:
       recommendation === "DraftDecision"
         ? "生成交易决策草案前先确认仓位上限、失效条件和下次复核日期。"
+        : lifecycle.bucket === "exited"
+          ? "先复盘退出原因和当前证据变化，只能在重新确认论点后进入观察或决策。"
         : recommendation === "CreateThesis"
           ? "先建立投资论点，明确进入、退出和失效条件。"
           : recommendation === "CollectEvidence"
@@ -266,18 +299,24 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
   const strategyVersion = latestStrategyVersion(database, strategyId);
   const strategyVersionId = strategyVersion ? String(strategyVersion.id) : undefined;
   const market = normalizeResearchIterationMarket(input.market);
+  const universe = normalizeSecurityLifecycleUniverse(input.universe);
   const marketName = marketLabel(market);
-  const securities = securitiesForMarket(database, market);
+  const universeName = universeLabel(universe);
+  const lifecycleById = getSecurityLifecycleMap(database);
+  const securities = securitiesForMarket(database, market).filter((security) => {
+    const lifecycle = lifecycleById.get(String(security.id));
+    return lifecycle ? securityLifecycleMatchesUniverse(lifecycle.bucket, universe) : false;
+  });
   const rawCandidates = securities
-    .map((security, index) => buildCandidate(database, security, index))
+    .map((security, index) => buildCandidate(database, security, lifecycleById.get(String(security.id))!, index))
     .sort((left, right) => right.fitScore - left.fitScore);
-  const finalSummary = `策略「${String(strategy.name)}」完成${marketName}候选筛选：${rawCandidates.length} 个候选，${rawCandidates.filter((candidate) => candidate.recommendation === "DraftDecision").length} 个可进入决策草案前检查。`;
+  const finalSummary = `策略「${String(strategy.name)}」完成${marketName} / ${universeName}候选筛选：${rawCandidates.length} 个候选，${rawCandidates.filter((candidate) => candidate.recommendation === "DraftDecision").length} 个可进入决策草案前检查。`;
   const stages: ResearchIterationStage[] = [
     {
       id: "constraint",
       title: "约束 Agent",
       status: "completed",
-      inputSummary: `strategy=${strategyId}; version=${strategyVersionId ?? "N/A"}; market=${market}`,
+      inputSummary: `strategy=${strategyId}; version=${strategyVersionId ?? "N/A"}; market=${market}; universe=${universe}`,
       output: `风险预算：${String(strategy.risk_budget)}；复盘频率：${String(strategy.review_cadence)}。`,
       latencyMs: 0
     },
@@ -285,8 +324,8 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       id: "data-coverage",
       title: "数据覆盖 Agent",
       status: "completed",
-      inputSummary: `market=${market}; securities=${securities.length}`,
-      output: `${marketName}候选池包含 ${securities.length} 个标的；缺失证据会写入候选卡片，不用模型输出替代事实。`,
+      inputSummary: `market=${market}; universe=${universe}; securities=${securities.length}`,
+      output: `${marketName} / ${universeName}包含 ${securities.length} 个标的；缺失证据会写入候选卡片，不用模型输出替代事实。`,
       latencyMs: 0
     },
     {
@@ -310,7 +349,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       title: "反证 Critic",
       status: "completed",
       inputSummary: `question=${input.question ?? ""}`,
-      output: `本轮只使用本地数据，并限定在${marketName}；缺少最近复盘和外部来源的候选不能直接升级为交易建议。`,
+      output: `本轮只使用本地数据，并限定在${marketName} / ${universeName}；缺少最近复盘和外部来源的候选不能直接升级为交易建议。`,
       latencyMs: 0
     }
   ];
@@ -364,6 +403,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
     strategyRunId,
     securityId: input.securityId,
     market,
+    universe,
     finalSummary,
     stages,
     candidates,
@@ -383,7 +423,11 @@ function runTargetDiagnosisWorkflow(database: DatabaseContext, input: ResearchIt
   const sources = sourceRows(database, input.securityId);
   const theses = thesisRows(database, input.securityId);
   const decisions = decisionRows(database, input.securityId);
-  const candidate = buildCandidate(database, security, 0);
+  const lifecycle = getSecurityLifecycleMap(database).get(input.securityId);
+  if (!lifecycle) {
+    throw new Error(`Security ${input.securityId} lifecycle was not found.`);
+  }
+  const candidate = buildCandidate(database, security, lifecycle, 0);
   const finalSummary = `${String(security.name)} 标的诊断完成：${strategies.length} 个策略视角，${sources.length} 条来源，${theses.length} 条论点，建议动作为 ${candidate.recommendation}。`;
   const stages: ResearchIterationStage[] = [
     {

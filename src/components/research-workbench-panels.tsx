@@ -36,6 +36,10 @@ function securityLabel(securities: ReferenceOption[], securityId: unknown): stri
   return securities.find((security) => security.value === String(securityId ?? ""))?.label ?? textValue(securityId);
 }
 
+function securityLifecycleLabel(securities: ReferenceOption[], securityId: unknown): string {
+  return securities.find((security) => security.value === String(securityId ?? ""))?.metadata.lifecycleLabel ?? "N/A";
+}
+
 function EmptyPanel({ children }: { children: string }) {
   return <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{children}</div>;
 }
@@ -133,9 +137,26 @@ export function DecisionCenterPanel({
   const activeDecisions = tradeDecisions.filter((decision) => ["Draft", "Submitted"].includes(String(decision.status ?? "")));
   const completedDecisions = tradeDecisions.filter((decision) => !["Draft", "Submitted"].includes(String(decision.status ?? "")));
   const pendingEvents = reviewEvents.filter((event) => String(event.status ?? "") === "Pending");
+  const lifecycleSummary = [
+    { bucket: "observed", label: "观察池" },
+    { bucket: "holding", label: "持仓中" },
+    { bucket: "exited", label: "已退出" },
+    { bucket: "candidate", label: "候选池" }
+  ].map((item) => ({
+    ...item,
+    count: securities.filter((security) => security.metadata.lifecycleBucket === item.bucket).length
+  }));
 
   return (
     <div className="grid gap-4" data-testid="decision-center-panel">
+      <div className="grid gap-3 md:grid-cols-4">
+        {lifecycleSummary.map((item) => (
+          <div key={item.bucket} className="rounded-md border bg-muted/20 p-3">
+            <div className="text-xs text-muted-foreground">{item.label}</div>
+            <div className="mt-1 text-2xl font-semibold">{item.count}</div>
+          </div>
+        ))}
+      </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader>
@@ -151,7 +172,10 @@ export function DecisionCenterPanel({
                 <div key={String(decision.id)} className="rounded-md border bg-muted/20 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-medium">{securityLabel(securities, decision.security_id)}</div>
-                    <Badge variant="secondary">{textValue(decision.action)} · {textValue(decision.final_decision)}</Badge>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge variant="outline">{securityLifecycleLabel(securities, decision.security_id)}</Badge>
+                      <Badge variant="secondary">{textValue(decision.action)} · {textValue(decision.final_decision)}</Badge>
+                    </div>
                   </div>
                   <div className="mt-2 text-sm">{textValue(decision.trigger)}</div>
                   <div className="mt-2 text-xs text-muted-foreground">主要风险：{textValue(decision.main_risks)}</div>
@@ -177,7 +201,10 @@ export function DecisionCenterPanel({
                 <div key={String(event.id)} className="rounded-md border bg-muted/20 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-medium">{securityLabel(securities, event.security_id)}</div>
-                    <Badge variant="outline">{textValue(event.expected_date)}</Badge>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge variant="outline">{securityLifecycleLabel(securities, event.security_id)}</Badge>
+                      <Badge variant="outline">{textValue(event.expected_date)}</Badge>
+                    </div>
                   </div>
                   <div className="mt-2 text-sm">{textValue(event.event_type)} · {textValue(event.importance)}</div>
                   <div className="mt-2 text-xs text-muted-foreground">要检查：{parseList(event.variables_to_check).join("、") || "N/A"}</div>
@@ -203,7 +230,10 @@ export function DecisionCenterPanel({
                 <div key={String(decision.id)} className="rounded-md border bg-muted/20 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-medium">{securityLabel(securities, decision.security_id)}</div>
-                    <Badge variant="outline">{textValue(decision.status)}</Badge>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Badge variant="outline">{securityLifecycleLabel(securities, decision.security_id)}</Badge>
+                      <Badge variant="outline">{textValue(decision.status)}</Badge>
+                    </div>
                   </div>
                   <div className="mt-2 text-sm">{textValue(decision.action)} · {textValue(decision.final_decision)}</div>
                   <div className="mt-2 text-xs text-muted-foreground">当时理由：{textValue(decision.trigger)}</div>
