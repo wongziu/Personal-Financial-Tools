@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRightIcon,
   BrainCircuitIcon,
   CheckCircle2Icon,
   ClipboardCheckIcon,
@@ -93,6 +94,10 @@ const universeLabels: Record<string, { zh: string; en: string }> = {
   researchable: { zh: "全部可研究", en: "All Researchable" }
 };
 
+type ResearchAgentHistoryFilter = ResearchIterationTriggerType | "all";
+
+const historyFilterOptions: ResearchAgentHistoryFilter[] = ["all", "strategy-run", "candidate-action", "review-session", "target-diagnosis"];
+
 function runTypeLabel(type: ResearchIterationTriggerType, language: Language): string {
   const labels: Record<ResearchIterationTriggerType, { zh: string; en: string }> = {
     "strategy-run": { zh: "策略运行", en: "Strategy Run" },
@@ -104,9 +109,123 @@ function runTypeLabel(type: ResearchIterationTriggerType, language: Language): s
   return localize(language, label.zh, label.en);
 }
 
+function historyFilterLabel(type: ResearchAgentHistoryFilter, language: Language): string {
+  return type === "all" ? localize(language, "全部", "All") : runTypeLabel(type, language);
+}
+
 function settingsLabel(value: string, labels: Record<string, { zh: string; en: string }>, language: Language): string {
   const label = labels[value];
   return label ? localize(language, label.zh, label.en) : value;
+}
+
+function runSubject(run: ResearchAgentRunRecord): string {
+  return run.securityName ?? run.strategyName ?? run.reviewSessionId ?? run.runId;
+}
+
+function hasStage(run: ResearchAgentRunRecord, stageId: string): boolean {
+  return run.stages.some((stage) => stage.id === stageId);
+}
+
+function totalLatencyMs(run: ResearchAgentRunRecord): number {
+  return run.stages.reduce((total, stage) => total + stage.latencyMs, 0);
+}
+
+function actionQueueForRun(run: ResearchAgentRunRecord, language: Language): Array<{ title: string; detail: string }> {
+  if (run.runType === "candidate-action" && hasStage(run, "source-draft")) {
+    return [
+      {
+        title: localize(language, "确认资料草稿", "Review draft source"),
+        detail: localize(language, "到信息分析确认资料事实，再决定是否写入正式来源。", "Review the draft evidence in Information Analysis before saving it as a formal source.")
+      },
+      {
+        title: localize(language, "建论点或生成草案", "Build thesis or draft decision"),
+        detail: localize(language, "资料确认后补齐投资论点、失效条件和复核日期。", "After evidence is confirmed, fill thesis, invalidation conditions, and review date.")
+      },
+      {
+        title: localize(language, "进入复盘", "Keep for review"),
+        detail: localize(language, "本次补资料行动已写入历史操作，可在复盘时检查是否执行到位。", "This evidence action is stored in history for later review.")
+      }
+    ];
+  }
+
+  if (run.runType === "strategy-run") {
+    return [
+      {
+        title: localize(language, "选择候选行动", "Choose candidate route"),
+        detail: localize(language, "回到 AI 自驱选股，为候选选择补资料、建论点、生成草案或观察。", "Return to AI Stock Picks and choose collect evidence, create thesis, draft decision, or observe.")
+      },
+      {
+        title: localize(language, "检查模型缺口", "Check model gaps"),
+        detail: localize(language, "先处理模型未执行或证据不足的候选，不把缺口直接升级成交易建议。", "Handle unavailable model checks and evidence gaps before upgrading an idea into a trade.")
+      }
+    ];
+  }
+
+  if (run.runType === "review-session") {
+    return [
+      {
+        title: localize(language, "处理复盘发现", "Process review findings"),
+        detail: localize(language, "先关闭待复核事件，再决定是否改策略版本。", "Close pending review events before changing strategy versions.")
+      },
+      {
+        title: localize(language, "更新纪律规则", "Update discipline"),
+        detail: localize(language, "把可执行的发现沉淀为下一次策略运行的约束。", "Turn actionable findings into constraints for the next strategy run.")
+      }
+    ];
+  }
+
+  return [
+    {
+      title: localize(language, "选择下一行动", "Choose next action"),
+      detail: localize(language, "把诊断结论转入补资料、建论点、观察或交易草案。", "Turn the diagnosis into collect evidence, create thesis, observe, or draft decision.")
+    }
+  ];
+}
+
+function ResearchAgentOverview({ runs, language }: { runs: ResearchAgentRunRecord[]; language: Language }) {
+  const stats = [
+    {
+      label: localize(language, "最近运行", "Recent Runs"),
+      value: runs.length
+    },
+    {
+      label: localize(language, "策略运行", "Strategy Runs"),
+      value: runs.filter((run) => run.runType === "strategy-run").length
+    },
+    {
+      label: localize(language, "候选行动", "Candidate Actions"),
+      value: runs.filter((run) => run.runType === "candidate-action").length
+    },
+    {
+      label: localize(language, "操作复盘", "Reviews"),
+      value: runs.filter((run) => run.runType === "review-session").length
+    },
+    {
+      label: localize(language, "阶段 Trace", "Trace Stages"),
+      value: runs.reduce((total, run) => total + run.stages.length, 0)
+    },
+    {
+      label: localize(language, "待确认草稿", "Drafts To Review"),
+      value: runs.filter((run) => hasStage(run, "source-draft")).length
+    }
+  ];
+
+  return (
+    <section className="rounded-md border bg-background p-4" data-testid="research-agent-overview">
+      <div className="mb-3 flex items-center gap-2">
+        <ClipboardCheckIcon className="size-4 text-primary" />
+        <h2 className="text-base font-semibold">{localize(language, "运行概览", "Run Overview")}</h2>
+      </div>
+      <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {stats.map((item) => (
+          <div key={item.label} className="rounded-md border bg-muted/20 px-3 py-2">
+            <div className="text-xs text-muted-foreground">{item.label}</div>
+            <div className="mt-1 text-2xl font-semibold">{item.value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function ResearchAgentHistory({
@@ -137,7 +256,7 @@ function ResearchAgentHistory({
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant={run.runType === "candidate-action" ? "secondary" : "outline"}>{runTypeLabel(run.runType, language)}</Badge>
                 <span>{run.runDate}</span>
-                <span>{run.securityName ?? run.strategyName ?? run.reviewSessionId ?? run.runId}</span>
+                <span>{runSubject(run)}</span>
               </div>
               <div className="mt-2 text-sm font-medium leading-relaxed">{run.finalSummary}</div>
               {run.question ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{run.question}</div> : null}
@@ -184,6 +303,8 @@ function ResearchAgentTrace({ run, language }: { run: ResearchAgentRunRecord | u
     );
   }
 
+  const actionQueue = actionQueueForRun(run, language);
+
   return (
     <section className="rounded-md border bg-background p-4" data-testid="research-agent-trace">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -207,7 +328,7 @@ function ResearchAgentTrace({ run, language }: { run: ResearchAgentRunRecord | u
         </div>
         <div className="rounded-md border bg-muted/20 px-3 py-2">
           <div className="text-xs text-muted-foreground">{localize(language, "对象", "Subject")}</div>
-          <div className="mt-1 text-sm font-semibold">{run.securityName ?? run.strategyName ?? run.reviewSessionId ?? run.runId}</div>
+          <div className="mt-1 text-sm font-semibold">{runSubject(run)}</div>
         </div>
         <div className="rounded-md border bg-muted/20 px-3 py-2">
           <div className="text-xs text-muted-foreground">{localize(language, "模型", "Model")}</div>
@@ -216,6 +337,39 @@ function ResearchAgentTrace({ run, language }: { run: ResearchAgentRunRecord | u
         <div className="rounded-md border bg-muted/20 px-3 py-2">
           <div className="text-xs text-muted-foreground">{localize(language, "阶段数", "Stages")}</div>
           <div className="mt-1 text-sm font-semibold">{run.stages.length}</div>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-md border bg-muted/20 p-3" data-testid="research-agent-checkpoints">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold">{localize(language, "运行检查点", "Run Checkpoints")}</div>
+            <Badge variant="outline">{totalLatencyMs(run)}ms</Badge>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {run.stages.map((stage, index) => (
+              <div key={`${run.runId}-checkpoint-${stage.id}`} className="flex items-start gap-2 rounded-md border bg-background p-2 text-xs">
+                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border bg-muted/30">{index + 1}</span>
+                <div className="min-w-0">
+                  <div className="font-semibold">{stage.title}</div>
+                  <div className="mt-1 line-clamp-2 text-muted-foreground">{stage.inputSummary || stage.output || "N/A"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-md border bg-muted/20 p-3" data-testid="agent-next-action-queue">
+          <div className="mb-2 text-sm font-semibold">{localize(language, "下一步队列", "Next Action Queue")}</div>
+          <div className="grid gap-2">
+            {actionQueue.map((item) => (
+              <div key={item.title} className="rounded-md border bg-background p-2 text-xs">
+                <div className="flex items-center gap-2 font-semibold">
+                  <ArrowRightIcon className="size-3.5 text-primary" />
+                  {item.title}
+                </div>
+                <div className="mt-1 leading-relaxed text-muted-foreground">{item.detail}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       {run.question ? (
@@ -256,6 +410,7 @@ export function ResearchAgentConsole() {
   const { settings } = useAppSettings();
   const [runs, setRuns] = useState<ResearchAgentRunRecord[]>([]);
   const [selectedRunId, setSelectedRunId] = useState("");
+  const [historyFilter, setHistoryFilter] = useState<ResearchAgentHistoryFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
   const [error, setError] = useState("");
@@ -316,6 +471,7 @@ export function ResearchAgentConsole() {
           return;
         }
 
+        setHistoryFilter("all");
         await loadRuns(payload.result.runId);
         toast.success(payload.result.finalSummary ?? localize(language, "操作复盘已完成", "Operation review completed"));
       } catch (reviewError) {
@@ -329,6 +485,19 @@ export function ResearchAgentConsole() {
   };
 
   const selectedRun = runs.find((run) => run.runId === selectedRunId);
+  const filteredRuns = useMemo(
+    () => historyFilter === "all" ? runs : runs.filter((run) => run.runType === historyFilter),
+    [historyFilter, runs]
+  );
+
+  useEffect(() => {
+    if (filteredRuns.length === 0) {
+      return;
+    }
+    if (!filteredRuns.some((run) => run.runId === selectedRunId)) {
+      setSelectedRunId(filteredRuns[0].runId);
+    }
+  }, [filteredRuns, selectedRunId]);
 
   const configuration = [
     {
@@ -398,6 +567,8 @@ export function ResearchAgentConsole() {
         </div>
       </section>
 
+      <ResearchAgentOverview runs={runs} language={language} />
+
       <section className="rounded-md border bg-background p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -415,13 +586,30 @@ export function ResearchAgentConsole() {
             </Button>
           </div>
         </div>
+        <div className="mb-3 flex flex-wrap gap-2" data-testid="research-agent-history-filters">
+          {historyFilterOptions.map((option) => {
+            const count = option === "all" ? runs.length : runs.filter((run) => run.runType === option).length;
+            return (
+              <Button
+                key={option}
+                type="button"
+                variant={historyFilter === option ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setHistoryFilter(option)}
+              >
+                {historyFilterLabel(option, language)}
+                <Badge variant="outline" className="ml-1">{count}</Badge>
+              </Button>
+            );
+          })}
+        </div>
         {error ? <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
         {isLoading && runs.length === 0 ? (
           <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
             {localize(language, "正在读取历史操作...", "Loading operation history...")}
           </div>
         ) : (
-          <ResearchAgentHistory runs={runs} language={language} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} />
+          <ResearchAgentHistory runs={filteredRuns} language={language} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} />
         )}
       </section>
 

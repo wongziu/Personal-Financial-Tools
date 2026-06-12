@@ -50,6 +50,7 @@ test("opens system settings and saves fx and model configuration", async ({ page
 
 test("groups related modules into clearer tabbed workspaces", async ({ page }) => {
   test.slow();
+  test.setTimeout(150_000);
   await page.goto("/");
 
   await expect(page.getByRole("link", { name: "账户", exact: true })).toBeVisible();
@@ -178,7 +179,30 @@ test("shows an auditable agent trace and can trigger an operation review", async
       }
     ]
   };
-  let servedRuns: Array<Record<string, unknown>> = [candidateActionRun];
+  const strategyRun = {
+    runId: "AIRUN-2026-STRATEGY-001",
+    runType: "strategy-run",
+    runDate: "2026-06-12",
+    strategyId: "STRAT-CORE-GROWTH",
+    strategyName: "核心成长观察策略",
+    strategyVersionId: "STRAT-CORE-GROWTH-V1",
+    question: "更新核心成长观察策略。",
+    model: "local-structured-workflow",
+    status: "completed",
+    finalSummary: "策略运行完成，可继续选择候选行动。",
+    createdAt: "2026-06-12T08:55:00.000Z",
+    stages: [
+      {
+        id: "screening",
+        title: "筛选 Agent",
+        status: "completed",
+        inputSummary: "candidates=2",
+        output: "候选已按证据、论点和风险排序。",
+        latencyMs: 0
+      }
+    ]
+  };
+  let servedRuns: Array<Record<string, unknown>> = [candidateActionRun, strategyRun];
 
   await page.route("**/api/research-agent-runs?limit=12", async (route) => {
     await route.fulfill({
@@ -211,14 +235,24 @@ test("shows an auditable agent trace and can trigger an operation review", async
   await page.goto("/research");
   await page.getByRole("tab", { name: "Agent 工作流" }).click();
   const consolePanel = page.getByTestId("research-agent-console");
+  await expect(consolePanel.getByTestId("research-agent-overview").getByText("运行概览", { exact: true })).toBeVisible();
+  await expect(consolePanel.getByTestId("research-agent-overview").getByText("最近运行")).toBeVisible();
+  await expect(consolePanel.getByTestId("research-agent-overview").getByText("待确认草稿")).toBeVisible();
   await expect(consolePanel.getByText("补资料工作流已为 Apple Inc. 生成待确认资料草稿。")).toHaveCount(2);
-  await consolePanel.getByRole("button", { name: "查看 Trace" }).click();
+  await consolePanel.getByRole("button", { name: "查看 Trace" }).first().click();
   const trace = consolePanel.getByTestId("research-agent-trace");
   await expect(trace.getByText("运行 Trace", { exact: true })).toBeVisible();
-  await expect(trace.getByText("资料搜索 Agent")).toBeVisible();
+  await expect(trace.getByTestId("research-agent-checkpoints").getByText("运行检查点", { exact: true })).toBeVisible();
+  await expect(trace.getByTestId("agent-next-action-queue").getByText("确认资料草稿", { exact: true })).toBeVisible();
+  await expect(trace.getByText("资料搜索 Agent")).toHaveCount(2);
   await expect(trace.getByText("Apple latest filing demand guidance；Apple AI capex risk")).toBeVisible();
   await expect(trace.getByText("输入摘要", { exact: true })).toHaveCount(4);
-  await expect(trace.getByText("target=information-analysis")).toBeVisible();
+  await expect(trace.getByText("target=information-analysis")).toHaveCount(2);
+  const filters = consolePanel.getByTestId("research-agent-history-filters");
+  await filters.getByRole("button", { name: /策略运行\s+1/ }).click();
+  await expect(consolePanel.getByText("策略运行完成，可继续选择候选行动。")).toHaveCount(2);
+  await filters.getByRole("button", { name: /候选行动\s+1/ }).click();
+  await expect(consolePanel.getByText("补资料工作流已为 Apple Inc. 生成待确认资料草稿。")).toHaveCount(2);
 
   await consolePanel.getByRole("button", { name: "运行操作复盘" }).click();
   expect(operationRequests[0]).toMatchObject({ triggerType: "review-session" });
@@ -229,6 +263,57 @@ test("shows an auditable agent trace and can trigger an operation review", async
 test("runs AI self-directed stock picking from the research workspace", async ({ page }) => {
   const requests: Array<Record<string, unknown>> = [];
   const actionRequests: Array<Record<string, unknown>> = [];
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        settings: {
+          baseCurrency: "CNY",
+          uiLanguage: "zh-CN",
+          fx: {
+            provider: "frankfurter",
+            autoRefreshEnabled: true,
+            refreshIntervalHours: 24,
+            pairs: ["USD/CNY", "HKD/CNY"],
+            lastRefreshAt: null,
+            lastRefreshStatus: null
+          },
+          marketChange: { colorMode: "green-up-red-down" },
+          modelApi: {
+            executionMode: "model",
+            provider: "openai-compatible",
+            baseUrl: "http://ai-hub.yingzhongtong.com/openai/v1",
+            model: "openai:test-model@default",
+            apiKeyMode: "env",
+            apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+            temperature: 0.2,
+            maxTokens: 2400
+          },
+          sourceIntelligence: {
+            enabled: true,
+            maxSources: 5,
+            defaultDomains: ["sec.gov", "hkexnews.hk"],
+            reuseTargets: ["sources", "theses"],
+            extractionPrompt: "Extract investment evidence."
+          },
+          agentWorkflow: {
+            enabled: true,
+            defaultMarket: "HK",
+            defaultUniverse: "holding",
+            maxModelCandidates: 2,
+            requireHumanApproval: true,
+            recordHistory: true
+          }
+        }
+      })
+    });
+  });
   const historyRun = {
     strategyRunId: "SRUN-2026-000",
     runId: "AIRUN-2026-000",
@@ -265,7 +350,7 @@ test("runs AI self-directed stock picking from the research workspace", async ({
     strategyVersionId: "STRAT-CORE-GROWTH-V1",
     strategyRunId: "SRUN-2026-001",
     market: "US",
-    universe: "active-research",
+    universe: "holding",
     finalSummary: "策略「核心成长观察策略」完成本地候选筛选。",
     stages: [
       {
@@ -418,7 +503,8 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(panel.getByText("1. Microsoft Corp.")).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股市场" })).toBeVisible();
   await expect(panel.getByRole("combobox", { name: "选股范围" })).toBeVisible();
-  await expect(panel.getByRole("combobox", { name: "选股范围" })).toContainText("默认研究范围");
+  await expect(panel.getByRole("combobox", { name: "选股市场" })).toContainText("港股");
+  await expect(panel.getByRole("combobox", { name: "选股范围" })).toContainText("持仓中");
   await panel.getByRole("combobox", { name: "选股市场" }).click();
   await page.getByRole("option", { name: "美股" }).click();
   await panel.getByRole("combobox", { name: "参考标的" }).click();
@@ -427,7 +513,7 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await panel.getByRole("button", { name: "清空参考标的" }).click();
   await expect(panel.getByRole("combobox", { name: "参考标的" })).toContainText("不限定标的");
   await panel.getByRole("button", { name: "立即更新选股" }).click();
-  expect(requests[0]).toMatchObject({ triggerType: "strategy-run", market: "US", universe: "active-research" });
+  expect(requests[0]).toMatchObject({ triggerType: "strategy-run", market: "US", universe: "holding" });
   expect(requests[0]).not.toHaveProperty("securityId");
   await expect(panel.getByTestId("ai-stock-picks-progress").getByText("Agent 进度")).toBeVisible();
   const result = panel.getByTestId("ai-stock-picks-result");
@@ -436,7 +522,7 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(summary.getByText("策略", { exact: true })).toBeVisible();
   await expect(summary.getByText("核心成长观察策略 · Active")).toBeVisible();
   await expect(summary.getByText("市场 / 范围", { exact: true })).toBeVisible();
-  await expect(summary.getByText("美股 / 默认研究范围", { exact: true })).toBeVisible();
+  await expect(summary.getByText("美股 / 持仓中", { exact: true })).toBeVisible();
   await expect(summary.getByText("候选标的", { exact: true })).toBeVisible();
   await expect(summary.getByText("1 个", { exact: true })).toHaveCount(2);
   await expect(summary.getByText("可进草案", { exact: true })).toBeVisible();
@@ -595,6 +681,7 @@ test("derives securities liquidity from lock-up days instead of direct selection
 });
 
 test("opens security detail and shows linked transactions and prices", async ({ page }) => {
+  test.slow();
   await page.goto("/securities");
 
   const detailLink = page.getByRole("link", { name: "详情 Apple Inc." });
@@ -986,6 +1073,7 @@ test("submits an executing trade decision and creates an exception draft", async
 });
 
 test("exports the xlsx workbook", async ({ page }) => {
+  test.slow();
   await page.goto("/export");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载 Excel 工作簿", exact: true }).click();

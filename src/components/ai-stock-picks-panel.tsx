@@ -16,6 +16,7 @@ import {
   XIcon
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAppSettings } from "@/components/app-settings-provider";
 import { FieldLabel } from "@/components/help-tooltip";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
@@ -427,9 +428,10 @@ function CandidateActionWorkflowCard({
 
 export function AiStockPicksPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
   const { language, t } = useLanguage();
+  const { settings } = useAppSettings();
   const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
-  const [market, setMarket] = useState<ResearchIterationMarket>("all");
-  const [universe, setUniverse] = useState<ResearchIterationUniverse>("active-research");
+  const [market, setMarket] = useState<ResearchIterationMarket>(settings.agentWorkflow.defaultMarket);
+  const [universe, setUniverse] = useState<ResearchIterationUniverse>(settings.agentWorkflow.defaultUniverse);
   const [securityId, setSecurityId] = useState("");
   const [result, setResult] = useState<ResearchIterationWorkflowResult | null>(null);
   const [candidateActionWorkflows, setCandidateActionWorkflows] = useState<Record<string, ResearchIterationCandidateActionWorkflowResult>>({});
@@ -441,10 +443,21 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const [savingCandidateId, setSavingCandidateId] = useState("");
   const [progressStages, setProgressStages] = useState<ProgressStage[]>([]);
   const [progressError, setProgressError] = useState("");
+  const [hasEditedScope, setHasEditedScope] = useState(false);
   const filteredSecurities = useMemo(
     () => securities.filter((security) => matchesMarket(security, market) && matchesUniverse(security, universe)),
     [market, securities, universe]
   );
+
+  useEffect(() => {
+    if (hasEditedScope) {
+      return;
+    }
+
+    setMarket(settings.agentWorkflow.defaultMarket);
+    setUniverse(settings.agentWorkflow.defaultUniverse);
+    setSecurityId("");
+  }, [hasEditedScope, settings.agentWorkflow.defaultMarket, settings.agentWorkflow.defaultUniverse]);
 
   const updateStrategy = (value: string) => {
     setStrategyId(value);
@@ -454,6 +467,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
 
   const updateMarket = (value: string) => {
     const nextMarket = value as ResearchIterationMarket;
+    setHasEditedScope(true);
     setMarket(nextMarket);
     setResult(null);
     setCandidateActionWorkflows({});
@@ -470,6 +484,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
 
   const updateUniverse = (value: string) => {
     const nextUniverse = value as ResearchIterationUniverse;
+    setHasEditedScope(true);
     setUniverse(nextUniverse);
     setResult(null);
     setCandidateActionWorkflows({});
@@ -485,12 +500,14 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   };
 
   const updateSecurity = (value: string) => {
+    setHasEditedScope(true);
     setSecurityId(value);
     setResult(null);
     setCandidateActionWorkflows({});
   };
 
   const clearSecurity = () => {
+    setHasEditedScope(true);
     setSecurityId("");
     setResult(null);
     setCandidateActionWorkflows({});
@@ -581,6 +598,13 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   };
 
   const runStockPicker = () => {
+    if (!settings.agentWorkflow.enabled) {
+      const message = localize(language, "Agent 工作流已关闭，请先在系统配置中启用。", "Agent workflow is disabled. Enable it in system settings first.");
+      setProgressError(message);
+      toast.error(message);
+      return;
+    }
+
     const initialStages = createProgressStages(language);
     const timers = progressTemplates.map((_, index) => window.setTimeout(() => {
       setProgressStages((current) => advanceProgress(current.length > 0 ? current : initialStages, index));
@@ -664,6 +688,11 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
         {result ? <Badge variant="secondary">{localize(language, "已更新", "Updated")}</Badge> : null}
       </CardHeader>
       <CardContent className="grid gap-4">
+        {!settings.agentWorkflow.enabled ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            {localize(language, "Agent 工作流当前关闭。开启后，策略运行、模型研判、补资料和历史 Trace 才会形成完整闭环。", "Agent workflow is currently disabled. Enable it to keep strategy runs, model research, evidence actions, and trace history in one loop.")}
+          </div>
+        ) : null}
         <div className="grid gap-3 xl:grid-cols-[minmax(180px,240px)_minmax(140px,180px)_minmax(160px,220px)_minmax(220px,1fr)_auto] xl:items-end">
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "内置策略", "Built-in Strategy")} help="" />
@@ -741,7 +770,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
               </Button>
             </div>
           </div>
-          <Button onClick={runStockPicker} disabled={isRunning || !strategyId}>
+          <Button onClick={runStockPicker} disabled={isRunning || !strategyId || !settings.agentWorkflow.enabled}>
             <RefreshCwIcon data-icon="inline-start" />
             {localize(language, "立即更新选股", "Refresh Picks")}
           </Button>

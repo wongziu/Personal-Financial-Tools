@@ -165,7 +165,8 @@ flowchart LR
   CandidateCards --> ActionAdvice["买入 / 观察 / 补资料 / 暂不买入"]
   CandidateCards --> ReadableJudgement["突出适配分 + 当前判断 + 简介"]
   AgentConsole --> AgentRunsApi["GET /api/research-agent-runs"]
-  AgentConsole --> TraceView["运行 Trace: 输入摘要 / 输出 / 耗时"]
+  AgentConsole --> RunOverview["运行概览: 类型计数 / Trace 阶段 / 待确认草稿"]
+  AgentConsole --> TraceView["运行 Trace: 检查点 / 输入摘要 / 输出 / 耗时 / 下一步队列"]
   AgentConsole --> ReviewRunApi["POST /api/research-iteration-workflow: review-session"]
 
   MyDecisions --> PendingDecisions["待确认决策"]
@@ -195,7 +196,10 @@ flowchart LR
 - 当前运行结果以结构化摘要展示策略、市场范围、候选数量、可进草案数量和模型研判覆盖情况，避免用户只能阅读一整段长文本。
 - 每次策略运行会在工作台展示为历史运行；用户可回看候选卡片、模型研判、证据缺口和风险，不依赖当前页面临时状态。
 - `Agent 工作流` 控制台展示工作流总览、Agent 配置快照、历史操作和单次运行 Trace；Trace 会展开每个阶段的输入摘要、输出和耗时。
+- `Agent 工作流` 控制台按最近运行、策略运行、候选行动、复盘、Trace 阶段和待确认草稿展示运行概览，并支持按运行类型筛选历史操作。
+- 单次 Trace 会额外展示检查点和下一步队列，帮助用户从“补资料”自然进入资料确认、建论点、交易草案或复盘。
 - `Agent 工作流` 控制台可直接触发 `操作复盘`，生成 `review-session` 类型的 agent run，并回流到历史操作列表。
+- `AI 自驱选股` 的默认市场和默认研究范围跟随 Agent 工作流设置；关闭 Agent 工作流时，页面会阻止新的自驱选股运行。
 - 候选卡片面向散户阅读突出适配分，并展示 `当前看好`、`当前看低`、`信息不足` 等当前判断和一句简介。
 - 候选卡片支持记录下一行动路线：`补资料`、`建论点`、`生成草案`、`加入观察`、`暂不行动`。该选择写回 `strategy_candidates`，用于后续复盘。
 - 策略、策略版本、策略运行、候选卡片、AI 运行记录仍存在，但在主工作台中是 AI 自驱选股的实现和审计层，不再作为一级用户页签。
@@ -247,7 +251,7 @@ flowchart LR
 | 投资论点 | 底层记录主动、交易、实验策略的论点、情景、失效和复核日期 | `src/app/[module]/page.tsx` | `theses` | `src/lib/modules.ts`, `src/lib/module-interactions.ts` | `src/lib/module-interactions.test.ts`, `tests/e2e/core.spec.ts` |
 | 标的生命周期推导 | 从主数据、已结算交易和研究记录推导观察池、持仓中、已退出、候选池、禁用 | `src/app/research/page.tsx` | `securities`, `transactions`, `information_sources`, `theses`, `review_events`, `trade_decisions` | `src/lib/security-lifecycle.ts`, `src/components/module-workspace.tsx` | `src/lib/security-lifecycle.test.ts`, `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
 | AI 自驱选股 | 从内置策略触发候选筛选，默认排除已退出标的，展示结构化运行摘要、标的分层、突出适配分、当前判断、建议动作、证据缺口、风险、agent 进度、历史运行和下一行动路线 | `src/app/research/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategies`, `strategy_versions`, `strategy_runs`, `strategy_candidates`, `research_agent_runs`, `research_agent_stages` | `src/components/ai-stock-picks-panel.tsx`, `src/components/research-workbench-panels.tsx`, `src/lib/research-iteration-workflow.ts`, `src/lib/security-lifecycle.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/security-lifecycle.test.ts`, `tests/e2e/core.spec.ts` |
-| Agent 工作流控制台 | 展示完整工作流、配置快照、历史操作；支持查看单次运行 Trace，并从控制台触发操作复盘 | `src/app/research/page.tsx`, `src/app/api/research-agent-runs/route.ts`, `src/app/api/research-iteration-workflow/route.ts` | `research_agent_runs`, `research_agent_stages`, `review_sessions`, `review_findings` | `src/components/research-agent-console.tsx`, `src/lib/research-iteration-workflow.ts`, `src/lib/app-settings.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/settings.test.ts`, `tests/e2e/core.spec.ts` |
+| Agent 工作流控制台 | 展示完整工作流、配置快照、运行概览、类型筛选、历史操作；支持查看单次运行 Trace、检查点、下一步队列，并从控制台触发操作复盘 | `src/app/research/page.tsx`, `src/app/api/research-agent-runs/route.ts`, `src/app/api/research-iteration-workflow/route.ts` | `research_agent_runs`, `research_agent_stages`, `review_sessions`, `review_findings` | `src/components/research-agent-console.tsx`, `src/lib/research-iteration-workflow.ts`, `src/lib/app-settings.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/settings.test.ts`, `tests/e2e/core.spec.ts` |
 | 策略库 | 底层维护散户慢频策略假设、证据门槛、风险预算和复盘频率 | `src/app/[module]/page.tsx` | `strategies` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
 | 策略版本 | 底层保存策略版本，复盘后通过新版本承接规则变化 | `src/app/[module]/page.tsx` | `strategy_versions` | `src/lib/modules.ts`, `src/lib/db/seed.ts` | `src/lib/research-iteration-workflow.test.ts`, `src/lib/db.integration.test.ts` |
 | 策略运行 | 底层记录每次策略筛选的市场、范围、摘要和关联 AI 运行，并支持工作台历史读取 | `src/app/[module]/page.tsx`, `src/app/api/research-iteration-workflow/route.ts` | `strategy_runs`, `research_agent_runs` | `src/lib/research-iteration-workflow.ts`, `src/lib/modules.ts` | `src/lib/research-iteration-workflow.test.ts`, `tests/e2e/core.spec.ts` |
