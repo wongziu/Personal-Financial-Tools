@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import type {
   ResearchIterationActionRoute,
   ResearchIterationCandidate,
+  ResearchIterationCandidateActionWorkflowResult,
   ResearchIterationMarket,
   ResearchIterationStrategyRunRecord,
   ResearchIterationUniverse,
@@ -378,6 +379,52 @@ function StockPickRunSummary({
   );
 }
 
+function CandidateActionWorkflowCard({
+  workflow,
+  language
+}: {
+  workflow: ResearchIterationCandidateActionWorkflowResult;
+  language: Language;
+}) {
+  return (
+    <div className="mt-3 rounded-md border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-900 dark:bg-sky-950/20" data-testid="candidate-action-workflow">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <SearchIcon className="size-4 text-sky-700 dark:text-sky-300" />
+          {localize(language, "补资料工作流", "Evidence Workflow")}
+        </div>
+        <Badge variant="secondary">{workflow.runId}</Badge>
+      </div>
+      <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{workflow.finalSummary}</div>
+      <div className="mt-3 grid gap-2">
+        {workflow.stages.map((stage) => (
+          <div key={stage.id} className="rounded-md border bg-background px-3 py-2">
+            <div className="flex items-center gap-2 text-xs font-semibold">
+              <CheckCircle2Icon className="size-3.5 text-emerald-600" />
+              {stage.title}
+            </div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{stage.output}</div>
+          </div>
+        ))}
+      </div>
+      {workflow.sourceDraft ? (
+        <div className="mt-3 rounded-md border bg-background p-3 text-xs">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{localize(language, "待确认资料草稿", "Draft Source")}</Badge>
+            <span className="font-semibold">{workflow.sourceDraft.fields.sourceName}</span>
+          </div>
+          <div className="leading-relaxed text-muted-foreground">{workflow.sourceDraft.fields.keyFacts}</div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            <Badge variant="secondary">{workflow.sourceDraft.fields.evidenceLevel}</Badge>
+            <Badge variant="secondary">{workflow.sourceDraft.fields.thesisImpact}</Badge>
+            {workflow.nextActionRoute ? <Badge variant="outline">{localize(language, "下一步：建论点", "Next: Create Thesis")}</Badge> : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AiStockPicksPanel({ securities, strategies }: { securities: ReferenceOption[]; strategies: ReferenceOption[] }) {
   const { language, t } = useLanguage();
   const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
@@ -385,6 +432,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const [universe, setUniverse] = useState<ResearchIterationUniverse>("active-research");
   const [securityId, setSecurityId] = useState("");
   const [result, setResult] = useState<ResearchIterationWorkflowResult | null>(null);
+  const [candidateActionWorkflows, setCandidateActionWorkflows] = useState<Record<string, ResearchIterationCandidateActionWorkflowResult>>({});
   const [isRunning, setIsRunning] = useState(false);
   const [history, setHistory] = useState<ResearchIterationStrategyRunRecord[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
@@ -401,12 +449,14 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const updateStrategy = (value: string) => {
     setStrategyId(value);
     setResult(null);
+    setCandidateActionWorkflows({});
   };
 
   const updateMarket = (value: string) => {
     const nextMarket = value as ResearchIterationMarket;
     setMarket(nextMarket);
     setResult(null);
+    setCandidateActionWorkflows({});
     setProgressStages([]);
     setSecurityId((currentSecurityId) => {
       if (!currentSecurityId) {
@@ -422,6 +472,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
     const nextUniverse = value as ResearchIterationUniverse;
     setUniverse(nextUniverse);
     setResult(null);
+    setCandidateActionWorkflows({});
     setProgressStages([]);
     setSecurityId((currentSecurityId) => {
       if (!currentSecurityId) {
@@ -436,11 +487,13 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const updateSecurity = (value: string) => {
     setSecurityId(value);
     setResult(null);
+    setCandidateActionWorkflows({});
   };
 
   const clearSecurity = () => {
     setSecurityId("");
     setResult(null);
+    setCandidateActionWorkflows({});
   };
 
   const loadHistory = useCallback(() => {
@@ -476,6 +529,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
   const showHistoryRecord = (record: ResearchIterationStrategyRunRecord) => {
     setSelectedHistoryId(record.strategyRunId);
     setResult(resultFromHistoryRecord(record));
+    setCandidateActionWorkflows({});
     setProgressStages([]);
     setProgressError("");
   };
@@ -494,7 +548,11 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ candidateId: candidate.id, actionRoute, actionNote })
         });
-        const payload = (await response.json()) as { candidate?: ResearchIterationCandidate; error?: string };
+        const payload = (await response.json()) as {
+          candidate?: ResearchIterationCandidate;
+          actionWorkflow?: ResearchIterationCandidateActionWorkflowResult;
+          error?: string;
+        };
         if (!response.ok || !payload.candidate) {
           const message = payload.error ?? t.formError;
           toast.error(message);
@@ -503,7 +561,17 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
 
         setResult((current) => replaceCandidateInResult(current, payload.candidate!));
         setHistory((current) => replaceCandidateInHistory(current, payload.candidate!));
-        toast.success(localize(language, "下一行动路线已记录", "Next action recorded"));
+        if (payload.actionWorkflow) {
+          setCandidateActionWorkflows((current) => ({
+            ...current,
+            [payload.actionWorkflow!.candidate.id]: payload.actionWorkflow!
+          }));
+        }
+        toast.success(
+          actionRoute === "CollectEvidence"
+            ? localize(language, "补资料工作流已生成资料草稿", "Evidence workflow created a source draft")
+            : localize(language, "下一行动路线已记录", "Next action recorded")
+        );
       } catch (error) {
         toast.error(error instanceof Error ? error.message : t.formError);
       } finally {
@@ -557,6 +625,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
         }
 
         setResult(payload.result);
+        setCandidateActionWorkflows({});
         const historyRecord = historyRecordFromResult(payload.result, strategies);
         if (historyRecord) {
           setHistory((current) => [historyRecord, ...current.filter((record) => record.strategyRunId !== historyRecord.strategyRunId)].slice(0, 6));
@@ -706,6 +775,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {result.candidates.map((candidate) => {
                   const outlook = candidateOutlook(candidate, language);
+                  const actionWorkflow = candidateActionWorkflows[candidate.id];
 
                   return (
                     <div key={candidate.id} className="rounded-md border bg-background p-3" data-testid={`ai-stock-pick-card-${candidate.id}`}>
@@ -788,6 +858,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
                         </div>
                         {candidate.actionNote ? <div className="mt-2 text-xs text-muted-foreground">{candidate.actionNote}</div> : null}
                       </div>
+                      {actionWorkflow ? <CandidateActionWorkflowCard workflow={actionWorkflow} language={language} /> : null}
                       <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                         <div>{localize(language, "入选原因", "Why")}: {candidate.matchedRules.join("；")}</div>
                         <div>{localize(language, "缺口", "Gaps")}: {candidate.missingEvidence.join("；") || "N/A"}</div>

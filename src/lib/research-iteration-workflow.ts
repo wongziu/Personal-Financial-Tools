@@ -1,6 +1,7 @@
 import type { AppSettings } from "@/lib/app-settings";
 import type { DatabaseContext } from "@/lib/db/client";
 import { callConfiguredModel, getModelApiKey, parseJsonObjectFromModel } from "@/lib/model-client";
+import { draftInformationSource, type SourceIntelligenceDraft } from "@/lib/source-intelligence";
 import { nextBusinessId, type Row } from "@/lib/services";
 import {
   getSecurityLifecycleMap,
@@ -13,7 +14,7 @@ import {
   type SecurityLifecycleUniverse
 } from "@/lib/security-lifecycle";
 
-export type ResearchIterationTriggerType = "strategy-run" | "target-diagnosis" | "review-session";
+export type ResearchIterationTriggerType = "strategy-run" | "target-diagnosis" | "review-session" | "candidate-action";
 export type ResearchIterationMarket = "all" | "A-Share" | "HK" | "US";
 export type ResearchIterationUniverse = SecurityLifecycleUniverse;
 export type ResearchIterationActionRoute = "Observe" | "CollectEvidence" | "CreateThesis" | "DraftDecision" | "Skip";
@@ -109,6 +110,22 @@ export interface ResearchIterationStrategyRunRecord {
   status: string;
   finalSummary: string;
   candidates: ResearchIterationCandidate[];
+}
+
+export interface ResearchIterationCandidateActionWorkflowInput {
+  candidateId: string;
+  actionRoute: ResearchIterationActionRoute;
+  actionNote?: string;
+}
+
+export interface ResearchIterationCandidateActionWorkflowResult {
+  actionRoute: ResearchIterationActionRoute;
+  runId: string;
+  finalSummary: string;
+  stages: ResearchIterationStage[];
+  candidate: ResearchIterationCandidate;
+  sourceDraft?: SourceIntelligenceDraft;
+  nextActionRoute?: ResearchIterationActionRoute;
 }
 
 const localWorkflowModel = "local-structured-workflow";
@@ -973,6 +990,83 @@ function loadResearchIterationCandidate(database: DatabaseContext, candidateId: 
   return candidateFromRow(row, getSecurityLifecycleMap(database));
 }
 
+function buildEvidenceWorkflowSourceText(input: {
+  candidate: ResearchIterationCandidate;
+  security: Row | undefined;
+  actionNote?: string;
+  settings: AppSettings;
+}): string {
+  const ticker = stringValue(input.security?.ticker, input.candidate.securityId);
+  const trustedDomains = input.settings.sourceIntelligence.defaultDomains.join(", ") || "N/A";
+
+  return [
+    `${input.candidate.securityName} (${ticker}) 补资料工作流：围绕候选卡片缺口自动整理可审查资料草稿。`,
+    `行动说明：${input.actionNote?.trim() || input.candidate.nextAction}`,
+    `本地缺口：${input.candidate.missingEvidence.join("；") || "N/A"}`,
+    `模型建议：${input.candidate.modelAssessment?.suggestedAction || "N/A"}`,
+    `建议检索词：${input.candidate.modelAssessment?.searchQueries.join("；") || `${input.candidate.securityName} 公告 财报 行业数据 风险`}`,
+    `优先可信域名：${trustedDomains}`,
+    "要求：只生成待确认资料草稿，不直接写入信息来源表；用户确认后再进入建论点或交易草案。"
+  ].join("\n");
+}
+
+function buildCandidateActionStages(input: {
+  actionRoute: ResearchIterationActionRoute;
+  candidate: ResearchIterationCandidate;
+  sourceDraft?: SourceIntelligenceDraft;
+  startedAt: number;
+}): ResearchIterationStage[] {
+  if (input.actionRoute !== "CollectEvidence") {
+    return [
+      {
+        id: "action-route",
+        title: "行动路线 Agent",
+        status: "completed",
+        inputSummary: `candidate=${input.candidate.id}; route=${input.actionRoute}`,
+        output: `已记录下一行动路线：${input.actionRoute}。`,
+        latencyMs: Date.now() - input.startedAt
+      }
+    ];
+  }
+
+  return [
+    {
+      id: "action-route",
+      title: "行动路线 Agent",
+      status: "completed",
+      inputSummary: `candidate=${input.candidate.id}; route=CollectEvidence`,
+      output: "将候选卡片的资料缺口拆解为公告、财报、行业数据和风险资料搜索任务。",
+      latencyMs: 0
+    },
+    {
+      id: "evidence-search",
+      title: "资料搜索 Agent",
+      status: "completed",
+      inputSummary: `security=${input.candidate.securityName}`,
+      output: input.candidate.modelAssessment?.searchQueries.join("；") || `${input.candidate.securityName} 公告 财报 行业数据 风险`,
+      latencyMs: 0
+    },
+    {
+      id: "source-draft",
+      title: "信息草稿 Agent",
+      status: "completed",
+      inputSummary: `draftMode=${input.sourceDraft?.mode ?? "N/A"}`,
+      output: input.sourceDraft
+        ? `${input.sourceDraft.fields.sourceName}：${input.sourceDraft.fields.keyFacts}`
+        : "未能生成资料草稿。",
+      latencyMs: Date.now() - input.startedAt
+    },
+    {
+      id: "handoff",
+      title: "下一步编排 Agent",
+      status: "completed",
+      inputSummary: "target=information-analysis",
+      output: "资料草稿需要用户确认后写入信息来源，再进入建论点或生成交易草案。",
+      latencyMs: 0
+    }
+  ];
+}
+
 export function listResearchIterationStrategyRuns(
   database: DatabaseContext,
   options: { limit?: number } = {}
@@ -1036,6 +1130,93 @@ export function selectResearchIterationCandidateAction(
     .run(actionRoute, input.actionNote?.trim() ?? "", actionUpdatedAt, input.candidateId);
 
   return loadResearchIterationCandidate(database, input.candidateId);
+}
+
+export async function runResearchIterationCandidateActionWorkflow(
+  database: DatabaseContext,
+  input: ResearchIterationCandidateActionWorkflowInput,
+  runtime: {
+    settings: AppSettings;
+    fetcher?: typeof fetch;
+  }
+): Promise<ResearchIterationCandidateActionWorkflowResult> {
+  const actionRoute = normalizeResearchIterationActionRoute(input.actionRoute);
+  let candidate = loadResearchIterationCandidate(database, input.candidateId);
+  const security = firstRow(database, "SELECT * FROM securities WHERE id = ?", candidate.securityId);
+  const strategyRun = candidate.strategyRunId
+    ? firstRow(database, "SELECT * FROM strategy_runs WHERE id = ?", candidate.strategyRunId)
+    : undefined;
+  const strategy = strategyRun?.strategy_id ? firstRow(database, "SELECT * FROM strategies WHERE id = ?", strategyRun.strategy_id) : undefined;
+  const strategyVersion = strategyRun?.strategy_version_id
+    ? firstRow(database, "SELECT * FROM strategy_versions WHERE id = ?", strategyRun.strategy_version_id)
+    : undefined;
+  const startedAt = Date.now();
+  if (actionRoute === "CollectEvidence" && candidate.modelAssessment?.mode !== "model") {
+    const modelAssessment = await assessCandidateWithModel({
+      settings: runtime.settings,
+      fetcher: runtime.fetcher,
+      candidate,
+      security,
+      strategy,
+      strategyVersion,
+      question: input.actionNote
+    });
+    candidate = { ...candidate, modelAssessment };
+    database.sqlite
+      .prepare("UPDATE strategy_candidates SET model_assessment = ? WHERE id = ?")
+      .run(JSON.stringify(modelAssessment), candidate.id);
+  }
+  const sourceDraft = actionRoute === "CollectEvidence"
+    ? await draftInformationSource({
+        settings: runtime.settings,
+        fetcher: runtime.fetcher,
+        securityName: candidate.securityName,
+        sourceUrl: "AI evidence workflow",
+        sourceText: buildEvidenceWorkflowSourceText({
+          candidate,
+          security,
+          actionNote: input.actionNote,
+          settings: runtime.settings
+        })
+      })
+    : undefined;
+  const finalSummary = actionRoute === "CollectEvidence"
+    ? `补资料工作流已为 ${candidate.securityName} 生成待确认资料草稿，确认后再进入建论点或交易草案。`
+    : `${candidate.securityName} 已记录下一行动路线：${actionRoute}。`;
+  const stages = buildCandidateActionStages({
+    actionRoute,
+    candidate,
+    sourceDraft,
+    startedAt
+  });
+  const runId = insertRun(database, {
+    triggerType: "candidate-action",
+    strategyId: strategyRun ? stringValue(strategyRun.strategy_id) : undefined,
+    strategyVersionId: strategyRun?.strategy_version_id ? stringValue(strategyRun.strategy_version_id) : undefined,
+    securityId: candidate.securityId,
+    question: input.actionNote ?? candidate.nextAction,
+    finalSummary
+  });
+  insertStages(database, runId, stages);
+
+  const actionNote = actionRoute === "CollectEvidence" && sourceDraft
+    ? `补资料工作流已生成资料草稿：${sourceDraft.fields.keyFacts}`
+    : input.actionNote;
+  const updatedCandidate = selectResearchIterationCandidateAction(database, {
+    candidateId: input.candidateId,
+    actionRoute,
+    actionNote
+  });
+
+  return {
+    actionRoute,
+    runId,
+    finalSummary,
+    stages,
+    candidate: updatedCandidate,
+    sourceDraft,
+    nextActionRoute: actionRoute === "CollectEvidence" ? "CreateThesis" : undefined
+  };
 }
 
 export function runResearchIterationWorkflow(database: DatabaseContext, input: ResearchIterationWorkflowInput): ResearchIterationWorkflowResult {

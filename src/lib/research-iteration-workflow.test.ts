@@ -4,6 +4,7 @@ import { createDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
 import {
   listResearchIterationStrategyRuns,
+  runResearchIterationCandidateActionWorkflow,
   runResearchIterationWorkflow,
   runResearchIterationWorkflowWithModel,
   selectResearchIterationCandidateAction
@@ -290,6 +291,112 @@ describe("research AI iteration workflow", () => {
     expect(history[0].candidates[0].actionRoute).toBe("CollectEvidence");
     expect(history[0].candidates[0].actionStatus).toBe("Selected");
     expect(history[0].candidates[0].actionNote).toContain("最近财报");
+  });
+
+  test("runs collect-evidence as an agent workflow and returns a source draft", async () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const result = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run the strategy before collecting evidence."
+    });
+
+    const workflow = await runResearchIterationCandidateActionWorkflow(database, {
+      candidateId: result.candidates[0].id,
+      actionRoute: "CollectEvidence",
+      actionNote: "自动补齐财报、公告和风险资料。"
+    }, {
+      settings: {
+        ...defaultAppSettings,
+        modelApi: {
+          ...defaultAppSettings.modelApi,
+          executionMode: "local"
+        }
+      }
+    });
+
+    expect(workflow.actionRoute).toBe("CollectEvidence");
+    expect(workflow.runId).toMatch(/^AIRUN-/);
+    expect(workflow.stages.map((stage) => stage.id)).toEqual(["action-route", "evidence-search", "source-draft", "handoff"]);
+    expect(workflow.sourceDraft?.fields.sourceName).toBe("AI evidence workflow");
+    expect(workflow.sourceDraft?.fields.keyFacts).toContain("Apple Inc.");
+    expect(workflow.finalSummary).toContain("补资料工作流");
+    expect(workflow.candidate.actionRoute).toBe("CollectEvidence");
+    expect(workflow.candidate.actionNote).toContain("资料草稿");
+
+    const persistedRun = database.sqlite
+      .prepare("SELECT run_type, security_id, final_summary FROM research_agent_runs WHERE id = ?")
+      .get(workflow.runId) as { run_type: string; security_id: string; final_summary: string };
+    const stageCount = database.sqlite
+      .prepare("SELECT COUNT(*) AS count FROM research_agent_stages WHERE run_id = ?")
+      .get(workflow.runId) as { count: number };
+
+    expect(persistedRun.run_type).toBe("candidate-action");
+    expect(persistedRun.security_id).toBe("US-AAPL");
+    expect(persistedRun.final_summary).toContain("补资料工作流");
+    expect(stageCount.count).toBe(4);
+  });
+
+  test("runs model research during collect-evidence when the candidate lacks assessment", async () => {
+    process.env.RESEARCH_ITERATION_TEST_KEY = "research-key";
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              searchStatus: "searched",
+              summary: "模型搜索到 Apple 仍需核对最新 10-Q、服务业务增速和 AI Capex 风险。",
+              judgement: "先补资料",
+              suggestedAction: "先把 10-Q、业绩会和 Capex 风险整理成待确认资料。",
+              evidenceHighlights: ["10-Q 待核对", "AI Capex 风险待确认"],
+              unresolvedGaps: ["缺少结构化复盘"],
+              searchQueries: ["Apple 10-Q AI Capex risk", "Apple services growth latest filing"]
+            })
+          }
+        }
+      ]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const result = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run without model assessment."
+    });
+
+    const workflow = await runResearchIterationCandidateActionWorkflow(database, {
+      candidateId: result.candidates[0].id,
+      actionRoute: "CollectEvidence",
+      actionNote: "点击补资料时主动搜索资料线索。"
+    }, {
+      settings: {
+        ...defaultAppSettings,
+        sourceIntelligence: {
+          ...defaultAppSettings.sourceIntelligence,
+          enabled: false
+        },
+        modelApi: {
+          ...defaultAppSettings.modelApi,
+          executionMode: "model",
+          apiKeyEnvVar: "RESEARCH_ITERATION_TEST_KEY",
+          model: "openai:test-model@default"
+        }
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(workflow.stages.find((stage) => stage.id === "evidence-search")?.output).toContain("Apple 10-Q AI Capex risk");
+    expect(workflow.candidate.modelAssessment?.mode).toBe("model");
+    expect(workflow.candidate.modelAssessment?.summary).toContain("Apple");
+
+    const persistedCandidate = database.sqlite
+      .prepare("SELECT model_assessment FROM strategy_candidates WHERE id = ?")
+      .get(workflow.candidate.id) as { model_assessment: string | null };
+    expect(persistedCandidate.model_assessment).toContain("10-Q");
   });
 
   test("runs a target diagnosis workflow for a selected security", () => {

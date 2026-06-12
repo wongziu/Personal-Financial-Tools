@@ -196,8 +196,72 @@ test("runs AI self-directed stock picking from the research workspace", async ({
             ...currentRun.candidates[0],
             actionRoute: body.actionRoute,
             actionStatus: "Selected",
-            actionNote: body.actionNote,
+            actionNote: "补资料工作流已生成资料草稿：Apple 最新财报与 AI Capex 风险需要人工确认。",
             actionUpdatedAt: "2026-06-12T14:00:00.000Z"
+          },
+          actionWorkflow: {
+            actionRoute: "CollectEvidence",
+            runId: "AIRUN-2026-ACTION-001",
+            finalSummary: "补资料工作流已生成资料草稿，等待用户确认后写入信息来源。",
+            stages: [
+              {
+                id: "action-route",
+                title: "行动路线 Agent",
+                status: "completed",
+                inputSummary: "candidate=CAND-2026-001",
+                output: "将补资料拆解为财报、公告和风险资料搜索。",
+                latencyMs: 0
+              },
+              {
+                id: "evidence-search",
+                title: "资料搜索 Agent",
+                status: "completed",
+                inputSummary: "Apple Inc.",
+                output: "生成 Apple latest filing demand guidance 检索任务。",
+                latencyMs: 0
+              },
+              {
+                id: "source-draft",
+                title: "信息草稿 Agent",
+                status: "completed",
+                inputSummary: "source draft",
+                output: "整理为可确认的信息来源草稿。",
+                latencyMs: 0
+              },
+              {
+                id: "handoff",
+                title: "下一步编排 Agent",
+                status: "completed",
+                inputSummary: "next route",
+                output: "用户确认资料后进入建论点。",
+                latencyMs: 0
+              }
+            ],
+            sourceDraft: {
+              mode: "local",
+              reuseTargets: ["sources", "theses"],
+              prompt: "collect evidence",
+              notes: "Review before saving.",
+              fields: {
+                informationDate: "2026-06-12",
+                obtainedDate: "2026-06-12",
+                sourceName: "AI evidence workflow",
+                sourceUrl: "",
+                informationType: "Research",
+                evidenceLevel: "C",
+                keyFacts: "Apple 最新财报与 AI Capex 风险需要人工确认。",
+                thesisImpact: "Pending",
+                triggersReview: true
+              }
+            },
+            candidate: {
+              ...currentRun.candidates[0],
+              actionRoute: body.actionRoute,
+              actionStatus: "Selected",
+              actionNote: "补资料工作流已生成资料草稿：Apple 最新财报与 AI Capex 风险需要人工确认。",
+              actionUpdatedAt: "2026-06-12T14:00:00.000Z"
+            },
+            nextActionRoute: "CreateThesis"
           }
         })
       });
@@ -287,6 +351,12 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await appleCard.getByRole("button", { name: "补资料" }).click();
   expect(actionRequests[0]).toMatchObject({ candidateId: "CAND-2026-001", actionRoute: "CollectEvidence" });
   await expect(appleCard.getByText("已选：补资料")).toBeVisible();
+  const actionWorkflow = appleCard.getByTestId("candidate-action-workflow");
+  await expect(actionWorkflow.getByText("补资料工作流", { exact: true })).toBeVisible();
+  await expect(actionWorkflow.getByText("资料搜索 Agent")).toBeVisible();
+  await expect(actionWorkflow.getByText("信息草稿 Agent")).toBeVisible();
+  await expect(actionWorkflow.getByText("AI evidence workflow")).toBeVisible();
+  await expect(actionWorkflow.getByText("Apple 最新财报与 AI Capex 风险需要人工确认。")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {

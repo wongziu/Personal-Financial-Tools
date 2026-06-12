@@ -50,8 +50,11 @@ const analysisModeLabels: Record<ResearchAnalysisMode, { zh: string; en: string 
 const iterationTriggerLabels: Record<ResearchIterationTriggerType, { zh: string; en: string }> = {
   "strategy-run": { zh: "策略运行", en: "Strategy Run" },
   "target-diagnosis": { zh: "标的诊断", en: "Target Diagnosis" },
-  "review-session": { zh: "复盘会话", en: "Review Session" }
+  "review-session": { zh: "复盘会话", en: "Review Session" },
+  "candidate-action": { zh: "候选行动", en: "Candidate Action" }
 };
+type SelectableIterationTriggerType = Exclude<ResearchIterationTriggerType, "candidate-action">;
+const selectableIterationTriggerTypes: SelectableIterationTriggerType[] = ["strategy-run", "target-diagnosis", "review-session"];
 
 function contextMetric(label: string, value: string | number | null) {
   return (
@@ -67,7 +70,7 @@ export function ResearchAiPanel({ securities, strategies }: { securities: Refere
   const [securityId, setSecurityId] = useState(securities[0]?.value ?? "");
   const [strategyId, setStrategyId] = useState(strategies[0]?.value ?? "");
   const [analysisMode, setAnalysisMode] = useState<ResearchAnalysisMode>("brief");
-  const [iterationTriggerType, setIterationTriggerType] = useState<ResearchIterationTriggerType>("strategy-run");
+  const [iterationTriggerType, setIterationTriggerType] = useState<SelectableIterationTriggerType>("strategy-run");
   const [question, setQuestion] = useState(localize(language, "总结当前研究状态，并给出下一步复核问题。", "Summarize the current research state and next review questions."));
   const [result, setResult] = useState<ResearchAiResult | null>(null);
   const [workflow, setWorkflow] = useState<ResearchAgentWorkflowResult | null>(null);
@@ -165,12 +168,12 @@ export function ResearchAiPanel({ securities, strategies }: { securities: Refere
         <div className="grid gap-3 md:grid-cols-[180px_180px_220px_1fr_auto] md:items-end">
           <div className="grid gap-1.5">
             <FieldLabel label={localize(language, "迭代入口", "Iteration Entry")} help="" />
-            <Select value={iterationTriggerType} onValueChange={(value) => setIterationTriggerType(value as ResearchIterationTriggerType)}>
+            <Select value={iterationTriggerType} onValueChange={(value) => setIterationTriggerType(value as SelectableIterationTriggerType)}>
               <SelectTrigger aria-label={localize(language, "迭代入口", "Iteration Entry")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(iterationTriggerLabels) as ResearchIterationTriggerType[]).map((triggerType) => (
+                {selectableIterationTriggerTypes.map((triggerType) => (
                   <SelectItem key={triggerType} value={triggerType}>
                     {localize(language, iterationTriggerLabels[triggerType].zh, iterationTriggerLabels[triggerType].en)}
                   </SelectItem>

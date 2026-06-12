@@ -6,16 +6,18 @@ import {
   normalizeResearchIterationActionRoute,
   normalizeResearchIterationMarket,
   normalizeResearchIterationUniverse,
+  runResearchIterationCandidateActionWorkflow,
   runResearchIterationWorkflowWithModel,
-  selectResearchIterationCandidateAction,
   type ResearchIterationTriggerType
 } from "@/lib/research-iteration-workflow";
 
-const triggerTypes = ["strategy-run", "target-diagnosis", "review-session"] as const;
+type PostTriggerType = Exclude<ResearchIterationTriggerType, "candidate-action">;
 
-function normalizeTriggerType(value: unknown): ResearchIterationTriggerType {
-  return typeof value === "string" && triggerTypes.includes(value as ResearchIterationTriggerType)
-    ? value as ResearchIterationTriggerType
+const triggerTypes: PostTriggerType[] = ["strategy-run", "target-diagnosis", "review-session"];
+
+function normalizeTriggerType(value: unknown): PostTriggerType {
+  return typeof value === "string" && triggerTypes.includes(value as PostTriggerType)
+    ? value as PostTriggerType
     : "strategy-run";
 }
 
@@ -70,13 +72,15 @@ export async function PATCH(request: Request) {
     }
 
     const database = getSeededDatabase();
-    const candidate = selectResearchIterationCandidateAction(database, {
+    const actionWorkflow = await runResearchIterationCandidateActionWorkflow(database, {
       candidateId: body.candidateId,
       actionRoute: normalizeResearchIterationActionRoute(body.actionRoute),
       actionNote: body.actionNote
+    }, {
+      settings: readAppSettings(database)
     });
 
-    return NextResponse.json({ candidate });
+    return NextResponse.json({ candidate: actionWorkflow.candidate, actionWorkflow });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 400 });
   }
