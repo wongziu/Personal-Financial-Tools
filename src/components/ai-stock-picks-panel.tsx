@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Language } from "@/lib/i18n";
 import { translateText } from "@/lib/i18n";
 import type { ReferenceOption } from "@/lib/modules";
+import { cn } from "@/lib/utils";
 import type {
   ResearchIterationActionRoute,
   ResearchIterationCandidate,
@@ -67,6 +68,19 @@ function actionVariant(candidate: ResearchIterationCandidate): "default" | "seco
     return "secondary";
   }
   return "outline";
+}
+
+function scoreToneClass(score: number): string {
+  if (score >= 75) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100";
+  }
+  if (score >= 60) {
+    return "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100";
+  }
+  if (score >= 45) {
+    return "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100";
+  }
+  return "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-100";
 }
 
 const marketOptions: Array<{ value: ResearchIterationMarket; zh: string; en: string }> = [
@@ -141,6 +155,66 @@ function lifecycleLabel(bucket: string | undefined, language: Language): string 
 function actionRouteLabel(route: ResearchIterationActionRoute | undefined, language: Language): string {
   const option = actionRouteOptions.find((item) => item.value === route);
   return option ? localize(language, option.zh, option.en) : localize(language, "未选择", "Not Selected");
+}
+
+function actionRouteButtonClass(route: ResearchIterationActionRoute, isSelected: boolean): string {
+  const base = "w-full justify-start border-l-4 bg-background text-left";
+  const tones: Record<ResearchIterationActionRoute, string> = {
+    CollectEvidence: "border-sky-500 text-sky-900 hover:bg-sky-50 dark:text-sky-100 dark:hover:bg-sky-950/30",
+    CreateThesis: "border-amber-500 text-amber-900 hover:bg-amber-50 dark:text-amber-100 dark:hover:bg-amber-950/30",
+    DraftDecision: "border-emerald-500 text-emerald-900 hover:bg-emerald-50 dark:text-emerald-100 dark:hover:bg-emerald-950/30",
+    Observe: "border-indigo-500 text-indigo-900 hover:bg-indigo-50 dark:text-indigo-100 dark:hover:bg-indigo-950/30",
+    Skip: "border-slate-400 text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900/40"
+  };
+  return cn(base, tones[route], isSelected && "bg-muted font-semibold");
+}
+
+function candidateOutlook(candidate: ResearchIterationCandidate, language: Language): { label: string; description: string } {
+  const zh: Record<ResearchIterationActionRoute, { label: string; description: string }> = {
+    DraftDecision: {
+      label: "当前看好",
+      description: "资料和论点基础较完整，可进入决策草案前检查。"
+    },
+    CollectEvidence: {
+      label: "信息不足",
+      description: "先补齐关键资料，再判断是否升级为投资论点。"
+    },
+    CreateThesis: {
+      label: "待建论点",
+      description: "已有线索但缺少可复述的投资论点和失效条件。"
+    },
+    Observe: {
+      label: "谨慎观察",
+      description: "适合留在观察池，等待证据、价格或风险条件变化。"
+    },
+    Skip: {
+      label: "当前看低",
+      description: "当前风险或资料状态不支持继续推进。"
+    }
+  };
+  const en: Record<ResearchIterationActionRoute, { label: string; description: string }> = {
+    DraftDecision: {
+      label: "Constructive",
+      description: "Evidence and thesis coverage are sufficient for draft-decision checks."
+    },
+    CollectEvidence: {
+      label: "Evidence Gap",
+      description: "Collect key evidence before upgrading the idea."
+    },
+    CreateThesis: {
+      label: "Needs Thesis",
+      description: "The idea needs a clear thesis and invalidation conditions."
+    },
+    Observe: {
+      label: "Watch",
+      description: "Keep it on watch until evidence, price, or risk conditions change."
+    },
+    Skip: {
+      label: "Avoid",
+      description: "Current risk or evidence state does not support progress."
+    }
+  };
+  return language === "en-US" ? en[candidate.recommendation] : zh[candidate.recommendation];
 }
 
 function marketOptionLabel(value: ResearchIterationMarket | undefined, language: Language): string {
@@ -630,80 +704,98 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
             <StockPickRunSummary result={result} strategies={strategies} language={language} />
             {result.candidates.length > 0 ? (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {result.candidates.map((candidate) => (
-                  <div key={candidate.id} className="rounded-md border bg-background p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">{candidate.rank}. {candidate.securityName}</div>
-                        <div className="text-xs text-muted-foreground">{localize(language, "适配分", "Fit Score")} {candidate.fitScore}</div>
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <Badge variant="outline">{lifecycleLabel(candidate.lifecycleBucket, language)}</Badge>
-                        <Badge variant={actionVariant(candidate)}>{actionLabel(candidate, language)}</Badge>
-                      </div>
-                    </div>
-                    <div className="mt-3 text-sm">{candidate.nextAction}</div>
-                    {candidate.modelAssessment ? (
-                      <div className="mt-3 rounded-md border bg-muted/20 p-2 text-xs">
-                        <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <Badge variant={candidate.modelAssessment.mode === "model" ? "secondary" : "outline"}>
-                            {candidate.modelAssessment.mode === "model"
-                              ? localize(language, "模型搜索研判", "Model Research")
-                              : localize(language, "模型未执行", "Model Unavailable")}
-                          </Badge>
-                          <span className="font-medium">{candidate.modelAssessment.judgement}</span>
+                {result.candidates.map((candidate) => {
+                  const outlook = candidateOutlook(candidate, language);
+
+                  return (
+                    <div key={candidate.id} className="rounded-md border bg-background p-3" data-testid={`ai-stock-pick-card-${candidate.id}`}>
+                      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold">{candidate.rank}. {candidate.securityName}</div>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <Badge variant="outline">{lifecycleLabel(candidate.lifecycleBucket, language)}</Badge>
+                            <Badge variant={actionVariant(candidate)}>{actionLabel(candidate, language)}</Badge>
+                          </div>
                         </div>
-                        <div className="text-muted-foreground">{candidate.modelAssessment.summary}</div>
-                        <div className="mt-1">{localize(language, "模型建议", "Model Action")}: {candidate.modelAssessment.suggestedAction}</div>
-                        {candidate.modelAssessment.evidenceHighlights.length > 0 ? (
-                          <div className="mt-1 text-muted-foreground">
-                            {localize(language, "线索", "Leads")}: {candidate.modelAssessment.evidenceHighlights.join("；")}
+                        <div
+                          className={cn("min-w-20 rounded-md border px-3 py-2 text-center", scoreToneClass(candidate.fitScore))}
+                          data-testid="ai-stock-pick-score"
+                        >
+                          <div className="text-xs font-medium">{localize(language, "适配分", "Fit Score")}</div>
+                          <div className="text-2xl font-bold leading-none">{candidate.fitScore}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={candidate.recommendation === "Skip" ? "destructive" : candidate.recommendation === "DraftDecision" ? "default" : "secondary"}>
+                            {outlook.label}
+                          </Badge>
+                          <span className="text-sm font-medium">{outlook.description}</span>
+                        </div>
+                        <div className="mt-2 text-sm text-muted-foreground">{candidate.nextAction}</div>
+                      </div>
+                      {candidate.modelAssessment ? (
+                        <div className="mt-3 rounded-md border bg-muted/20 p-2 text-xs">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <Badge variant={candidate.modelAssessment.mode === "model" ? "secondary" : "outline"}>
+                              {candidate.modelAssessment.mode === "model"
+                                ? localize(language, "模型搜索研判", "Model Research")
+                                : localize(language, "模型未执行", "Model Unavailable")}
+                            </Badge>
+                            <span className="font-medium">{candidate.modelAssessment.judgement}</span>
                           </div>
-                        ) : null}
-                        {candidate.modelAssessment.searchQueries.length > 0 ? (
-                          <div className="mt-1 text-muted-foreground">
-                            {localize(language, "检索词", "Search Queries")}: {candidate.modelAssessment.searchQueries.join("；")}
-                          </div>
-                        ) : null}
+                          <div className="text-muted-foreground">{candidate.modelAssessment.summary}</div>
+                          <div className="mt-1">{localize(language, "模型建议", "Model Action")}: {candidate.modelAssessment.suggestedAction}</div>
+                          {candidate.modelAssessment.evidenceHighlights.length > 0 ? (
+                            <div className="mt-1 text-muted-foreground">
+                              {localize(language, "线索", "Leads")}: {candidate.modelAssessment.evidenceHighlights.join("；")}
+                            </div>
+                          ) : null}
+                          {candidate.modelAssessment.searchQueries.length > 0 ? (
+                            <div className="mt-1 text-muted-foreground">
+                              {localize(language, "检索词", "Search Queries")}: {candidate.modelAssessment.searchQueries.join("；")}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 rounded-md border bg-muted/10 p-2">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-semibold">{localize(language, "下一行动路线", "Next Action Route")}</span>
+                          <Badge variant={candidate.actionStatus === "Selected" ? "secondary" : "outline"}>
+                            {candidate.actionStatus === "Selected" && candidate.actionRoute
+                              ? `${localize(language, "已选", "Selected")}：${actionRouteLabel(candidate.actionRoute, language)}`
+                              : localize(language, "未选择", "Not Selected")}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-2" data-testid="ai-stock-pick-actions">
+                          {actionRouteOptions.map((option) => {
+                            const Icon = option.icon;
+                            return (
+                              <Button
+                                key={option.value}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={actionRouteButtonClass(option.value, candidate.actionRoute === option.value)}
+                                disabled={savingCandidateId === candidate.id}
+                                onClick={() => selectCandidateAction(candidate, option.value)}
+                              >
+                                <Icon data-icon="inline-start" />
+                                {localize(language, option.zh, option.en)}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        {candidate.actionNote ? <div className="mt-2 text-xs text-muted-foreground">{candidate.actionNote}</div> : null}
                       </div>
-                    ) : null}
-                    <div className="mt-3 rounded-md border bg-muted/10 p-2">
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="font-semibold">{localize(language, "下一行动路线", "Next Action Route")}</span>
-                        <Badge variant={candidate.actionStatus === "Selected" ? "secondary" : "outline"}>
-                          {candidate.actionStatus === "Selected" && candidate.actionRoute
-                            ? `${localize(language, "已选", "Selected")}：${actionRouteLabel(candidate.actionRoute, language)}`
-                            : localize(language, "未选择", "Not Selected")}
-                        </Badge>
+                      <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                        <div>{localize(language, "入选原因", "Why")}: {candidate.matchedRules.join("；")}</div>
+                        <div>{localize(language, "缺口", "Gaps")}: {candidate.missingEvidence.join("；") || "N/A"}</div>
+                        <div>{localize(language, "风险", "Risks")}: {candidate.riskFlags.join("；") || "N/A"}</div>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {actionRouteOptions.map((option) => {
-                          const Icon = option.icon;
-                          return (
-                            <Button
-                              key={option.value}
-                              type="button"
-                              variant={candidate.actionRoute === option.value ? "secondary" : "outline"}
-                              size="sm"
-                              className="justify-start"
-                              disabled={savingCandidateId === candidate.id}
-                              onClick={() => selectCandidateAction(candidate, option.value)}
-                            >
-                              <Icon data-icon="inline-start" />
-                              {localize(language, option.zh, option.en)}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                      {candidate.actionNote ? <div className="mt-2 text-xs text-muted-foreground">{candidate.actionNote}</div> : null}
                     </div>
-                    <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
-                      <div>{localize(language, "入选原因", "Why")}: {candidate.matchedRules.join("；")}</div>
-                      <div>{localize(language, "缺口", "Gaps")}: {candidate.missingEvidence.join("；") || "N/A"}</div>
-                      <div>{localize(language, "风险", "Risks")}: {candidate.riskFlags.join("；") || "N/A"}</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">

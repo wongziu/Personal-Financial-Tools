@@ -248,12 +248,29 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(summary.getByText("模型研判", { exact: true })).toBeVisible();
   await expect(summary.getByText("1 已补充 / 0 未执行")).toBeVisible();
   await expect(summary.getByText("策略「核心成长观察策略」完成本地候选筛选")).toBeVisible();
-  await expect(result.getByText("1. Apple Inc.")).toBeVisible();
-  await expect(result.getByText("观察池")).toBeVisible();
-  await expect(result.getByText("可生成买入草案")).toBeVisible();
-  await expect(result.getByText("模型搜索研判")).toBeVisible();
-  await expect(result.getByText("模型检索后认为仍需核对财报和复盘条件。")).toBeVisible();
-  await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
+  const appleCard = result.getByTestId("ai-stock-pick-card-CAND-2026-001");
+  await expect(appleCard.getByText("1. Apple Inc.")).toBeVisible();
+  await expect(appleCard.getByText("观察池")).toBeVisible();
+  await expect(appleCard.getByText("可生成买入草案")).toBeVisible();
+  await expect(appleCard.getByTestId("ai-stock-pick-score")).toContainText("80");
+  await expect(appleCard.getByText("当前看好", { exact: true })).toBeVisible();
+  await expect(appleCard.getByText("资料和论点基础较完整，可进入决策草案前检查。")).toBeVisible();
+  const actionRoutes = appleCard.getByTestId("ai-stock-pick-actions");
+  await expect(actionRoutes.getByRole("button", { name: "补资料" })).toBeVisible();
+  const actionLayout = await actionRoutes.evaluate((element) => {
+    const buttons = [...element.querySelectorAll("button")];
+    return {
+      columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+      firstClass: buttons[0]?.className ?? "",
+      thirdClass: buttons[2]?.className ?? ""
+    };
+  });
+  expect(actionLayout.columns).toBe(1);
+  expect(actionLayout.firstClass).toContain("border-sky");
+  expect(actionLayout.thirdClass).toContain("border-emerald");
+  await expect(appleCard.getByText("模型搜索研判")).toBeVisible();
+  await expect(appleCard.getByText("模型检索后认为仍需核对财报和复盘条件。")).toBeVisible();
+  await expect(appleCard.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
   const layoutOrder = await panel.evaluate((element) => {
     const resultElement = element.querySelector('[data-testid="ai-stock-picks-result"]');
     const historyElement = element.querySelector('[data-testid="ai-stock-picks-history"]');
@@ -267,9 +284,9 @@ test("runs AI self-directed stock picking from the research workspace", async ({
     };
   });
   expect(layoutOrder.historyTop).toBeGreaterThan(layoutOrder.resultTop);
-  await result.getByRole("button", { name: "补资料" }).click();
+  await appleCard.getByRole("button", { name: "补资料" }).click();
   expect(actionRequests[0]).toMatchObject({ candidateId: "CAND-2026-001", actionRoute: "CollectEvidence" });
-  await expect(result.getByText("已选：补资料")).toBeVisible();
+  await expect(appleCard.getByText("已选：补资料")).toBeVisible();
 });
 
 test("localizes securities list fields and values across three languages", async ({ page }) => {
