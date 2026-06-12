@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BrainCircuitIcon,
   CheckCircle2Icon,
@@ -13,6 +13,7 @@ import {
   RouteIcon,
   Settings2Icon
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAppSettings } from "@/components/app-settings-provider";
 import { useLanguage } from "@/components/language-provider";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +109,17 @@ function settingsLabel(value: string, labels: Record<string, { zh: string; en: s
   return label ? localize(language, label.zh, label.en) : value;
 }
 
-function ResearchAgentHistory({ runs, language }: { runs: ResearchAgentRunRecord[]; language: Language }) {
+function ResearchAgentHistory({
+  runs,
+  language,
+  selectedRunId,
+  onSelectRun
+}: {
+  runs: ResearchAgentRunRecord[];
+  language: Language;
+  selectedRunId: string;
+  onSelectRun: (runId: string) => void;
+}) {
   if (runs.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
@@ -134,6 +145,15 @@ function ResearchAgentHistory({ runs, language }: { runs: ResearchAgentRunRecord
             <div className="shrink-0 text-right text-xs text-muted-foreground">
               <div className="font-mono">{run.runId}</div>
               <div>{localize(language, "阶段", "Stages")}：{run.stages.length}</div>
+              <Button
+                type="button"
+                variant={selectedRunId === run.runId ? "secondary" : "outline"}
+                size="sm"
+                className="mt-2"
+                onClick={() => onSelectRun(run.runId)}
+              >
+                {localize(language, "查看 Trace", "View Trace")}
+              </Button>
             </div>
           </div>
           {run.stages.length > 0 ? (
@@ -155,15 +175,93 @@ function ResearchAgentHistory({ runs, language }: { runs: ResearchAgentRunRecord
   );
 }
 
+function ResearchAgentTrace({ run, language }: { run: ResearchAgentRunRecord | undefined; language: Language }) {
+  if (!run) {
+    return (
+      <div className="rounded-md border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+        {localize(language, "选择一条历史操作后查看完整阶段 Trace。", "Select an operation to inspect the full stage trace.")}
+      </div>
+    );
+  }
+
+  return (
+    <section className="rounded-md border bg-background p-4" data-testid="research-agent-trace">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <RouteIcon className="size-4 text-primary" />
+            <h2 className="text-base font-semibold">运行 Trace</h2>
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground">{run.finalSummary}</div>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant="outline">{runTypeLabel(run.runType, language)}</Badge>
+          <Badge variant="secondary">{run.status}</Badge>
+          <Badge variant="outline">{run.runId}</Badge>
+        </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-4">
+        <div className="rounded-md border bg-muted/20 px-3 py-2">
+          <div className="text-xs text-muted-foreground">{localize(language, "日期", "Date")}</div>
+          <div className="mt-1 text-sm font-semibold">{run.runDate}</div>
+        </div>
+        <div className="rounded-md border bg-muted/20 px-3 py-2">
+          <div className="text-xs text-muted-foreground">{localize(language, "对象", "Subject")}</div>
+          <div className="mt-1 text-sm font-semibold">{run.securityName ?? run.strategyName ?? run.reviewSessionId ?? run.runId}</div>
+        </div>
+        <div className="rounded-md border bg-muted/20 px-3 py-2">
+          <div className="text-xs text-muted-foreground">{localize(language, "模型", "Model")}</div>
+          <div className="mt-1 truncate text-sm font-semibold">{run.model}</div>
+        </div>
+        <div className="rounded-md border bg-muted/20 px-3 py-2">
+          <div className="text-xs text-muted-foreground">{localize(language, "阶段数", "Stages")}</div>
+          <div className="mt-1 text-sm font-semibold">{run.stages.length}</div>
+        </div>
+      </div>
+      {run.question ? (
+        <div className="mt-3 rounded-md border bg-muted/20 p-3">
+          <div className="text-xs font-semibold text-muted-foreground">{localize(language, "触发问题", "Question")}</div>
+          <div className="mt-1 text-sm leading-relaxed">{run.question}</div>
+        </div>
+      ) : null}
+      <div className="mt-3 grid gap-3">
+        {run.stages.map((stage, index) => (
+          <div key={`${run.runId}-trace-${stage.id}`} className="rounded-md border bg-muted/10 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <span className="flex size-6 items-center justify-center rounded-md border bg-background text-xs">{index + 1}</span>
+                {stage.title}
+              </div>
+              <Badge variant="outline">{stage.latencyMs}ms</Badge>
+            </div>
+            <div className="mt-2 grid gap-2 md:grid-cols-[220px_1fr]">
+              <div className="rounded-md border bg-background p-2">
+                <div className="text-xs font-semibold text-muted-foreground">输入摘要</div>
+                <div className="mt-1 text-xs leading-relaxed">{stage.inputSummary || "N/A"}</div>
+              </div>
+              <div className="rounded-md border bg-background p-2">
+                <div className="text-xs font-semibold text-muted-foreground">{localize(language, "输出", "Output")}</div>
+                <div className="mt-1 text-xs leading-relaxed">{stage.output || "N/A"}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ResearchAgentConsole() {
   const { language } = useLanguage();
   const { settings } = useAppSettings();
   const [runs, setRuns] = useState<ResearchAgentRunRecord[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
   const [error, setError] = useState("");
 
-  const loadRuns = useMemo(
-    () => async () => {
+  const loadRuns = useCallback(
+    async (preferredRunId?: string) => {
       setIsLoading(true);
       setError("");
       try {
@@ -174,6 +272,15 @@ export function ResearchAgentConsole() {
           return;
         }
         setRuns(payload.runs);
+        setSelectedRunId((current) => {
+          if (preferredRunId && payload.runs!.some((run) => run.runId === preferredRunId)) {
+            return preferredRunId;
+          }
+          if (current && payload.runs!.some((run) => run.runId === current)) {
+            return current;
+          }
+          return payload.runs![0]?.runId ?? "";
+        });
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : localize(language, "读取历史操作失败。", "Failed to load operation history."));
       } finally {
@@ -186,6 +293,42 @@ export function ResearchAgentConsole() {
   useEffect(() => {
     void loadRuns();
   }, [loadRuns]);
+
+  const runReviewSession = () => {
+    setIsReviewing(true);
+    setError("");
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/research-iteration-workflow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            triggerType: "review-session",
+            question: "从 Agent 控制台触发操作复盘，检查历史行动路线、待确认资料草稿和下一步纪律。"
+          })
+        });
+        const payload = (await response.json()) as { result?: { runId?: string; finalSummary?: string }; error?: string };
+        if (!response.ok || !payload.result?.runId) {
+          const message = payload.error ?? localize(language, "操作复盘运行失败。", "Failed to run operation review.");
+          setError(message);
+          toast.error(message);
+          return;
+        }
+
+        await loadRuns(payload.result.runId);
+        toast.success(payload.result.finalSummary ?? localize(language, "操作复盘已完成", "Operation review completed"));
+      } catch (reviewError) {
+        const message = reviewError instanceof Error ? reviewError.message : localize(language, "操作复盘运行失败。", "Failed to run operation review.");
+        setError(message);
+        toast.error(message);
+      } finally {
+        setIsReviewing(false);
+      }
+    })();
+  };
+
+  const selectedRun = runs.find((run) => run.runId === selectedRunId);
 
   const configuration = [
     {
@@ -261,10 +404,16 @@ export function ResearchAgentConsole() {
             <HistoryIcon className="size-4 text-primary" />
             <h2 className="text-base font-semibold">历史操作</h2>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadRuns()} disabled={isLoading}>
-            {isLoading ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : <RefreshCwIcon data-icon="inline-start" />}
-            {localize(language, "刷新", "Refresh")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={runReviewSession} disabled={isReviewing}>
+              {isReviewing ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : <HistoryIcon data-icon="inline-start" />}
+              {localize(language, "运行操作复盘", "Run Operation Review")}
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void loadRuns()} disabled={isLoading}>
+              {isLoading ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : <RefreshCwIcon data-icon="inline-start" />}
+              {localize(language, "刷新", "Refresh")}
+            </Button>
+          </div>
         </div>
         {error ? <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
         {isLoading && runs.length === 0 ? (
@@ -272,9 +421,11 @@ export function ResearchAgentConsole() {
             {localize(language, "正在读取历史操作...", "Loading operation history...")}
           </div>
         ) : (
-          <ResearchAgentHistory runs={runs} language={language} />
+          <ResearchAgentHistory runs={runs} language={language} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} />
         )}
       </section>
+
+      <ResearchAgentTrace run={selectedRun} language={language} />
     </div>
   );
 }

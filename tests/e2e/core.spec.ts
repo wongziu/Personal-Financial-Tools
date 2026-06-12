@@ -106,6 +106,126 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
   await expect(page.getByRole("tab", { name: "策略版本" })).toHaveCount(0);
 });
 
+test("shows an auditable agent trace and can trigger an operation review", async ({ page }) => {
+  const operationRequests: Array<Record<string, unknown>> = [];
+  const candidateActionRun = {
+    runId: "AIRUN-2026-ACTION-001",
+    runType: "candidate-action",
+    runDate: "2026-06-12",
+    securityId: "US-AAPL",
+    securityName: "Apple Inc.",
+    strategyId: "STRAT-CORE-GROWTH",
+    strategyName: "核心成长观察策略",
+    strategyVersionId: "STRAT-CORE-GROWTH-V1",
+    question: "补资料：进入下一步研究。",
+    model: "local-structured-workflow",
+    status: "completed",
+    finalSummary: "补资料工作流已为 Apple Inc. 生成待确认资料草稿。",
+    createdAt: "2026-06-12T09:00:00.000Z",
+    stages: [
+      {
+        id: "action-route",
+        title: "行动路线 Agent",
+        status: "completed",
+        inputSummary: "candidate=CAND-2026-001; route=CollectEvidence",
+        output: "将候选卡片的资料缺口拆解为公告、财报和风险资料搜索任务。",
+        latencyMs: 0
+      },
+      {
+        id: "evidence-search",
+        title: "资料搜索 Agent",
+        status: "completed",
+        inputSummary: "security=Apple Inc.",
+        output: "Apple latest filing demand guidance；Apple AI capex risk",
+        latencyMs: 0
+      },
+      {
+        id: "source-draft",
+        title: "信息草稿 Agent",
+        status: "completed",
+        inputSummary: "draftMode=local",
+        output: "AI evidence workflow：Apple 最新财报与 AI Capex 风险需要人工确认。",
+        latencyMs: 42
+      },
+      {
+        id: "handoff",
+        title: "下一步编排 Agent",
+        status: "completed",
+        inputSummary: "target=information-analysis",
+        output: "资料草稿需要用户确认后写入信息来源，再进入建论点或生成交易草案。",
+        latencyMs: 0
+      }
+    ]
+  };
+  const reviewRun = {
+    runId: "AIRUN-2026-REVIEW-001",
+    runType: "review-session",
+    runDate: "2026-06-12",
+    reviewSessionId: "REVW-2026-001",
+    question: "从 Agent 控制台触发操作复盘。",
+    model: "local-structured-workflow",
+    status: "completed",
+    finalSummary: "复盘完成：检查历史行动路线和待确认资料草稿。",
+    createdAt: "2026-06-12T09:05:00.000Z",
+    stages: [
+      {
+        id: "outcome",
+        title: "结果归因 Agent",
+        status: "completed",
+        inputSummary: "decisions=1",
+        output: "先检查历史决策是否触及风险规则，再讨论收益或亏损。",
+        latencyMs: 0
+      }
+    ]
+  };
+  let servedRuns: Array<Record<string, unknown>> = [candidateActionRun];
+
+  await page.route("**/api/research-agent-runs?limit=12", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ runs: servedRuns })
+    });
+  });
+  await page.route("**/api/research-iteration-workflow", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    operationRequests.push(body);
+    servedRuns = [reviewRun, ...servedRuns];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          triggerType: "review-session",
+          runId: reviewRun.runId,
+          reviewSessionId: reviewRun.reviewSessionId,
+          finalSummary: reviewRun.finalSummary,
+          stages: reviewRun.stages,
+          candidates: [],
+          reviewFindings: []
+        }
+      })
+    });
+  });
+
+  await page.goto("/research");
+  await page.getByRole("tab", { name: "Agent 工作流" }).click();
+  const consolePanel = page.getByTestId("research-agent-console");
+  await expect(consolePanel.getByText("补资料工作流已为 Apple Inc. 生成待确认资料草稿。")).toHaveCount(2);
+  await consolePanel.getByRole("button", { name: "查看 Trace" }).click();
+  const trace = consolePanel.getByTestId("research-agent-trace");
+  await expect(trace.getByText("运行 Trace", { exact: true })).toBeVisible();
+  await expect(trace.getByText("资料搜索 Agent")).toBeVisible();
+  await expect(trace.getByText("Apple latest filing demand guidance；Apple AI capex risk")).toBeVisible();
+  await expect(trace.getByText("输入摘要", { exact: true })).toHaveCount(4);
+  await expect(trace.getByText("target=information-analysis")).toBeVisible();
+
+  await consolePanel.getByRole("button", { name: "运行操作复盘" }).click();
+  expect(operationRequests[0]).toMatchObject({ triggerType: "review-session" });
+  await expect(consolePanel.getByText("复盘完成：检查历史行动路线和待确认资料草稿。")).toHaveCount(2);
+  await expect(consolePanel.getByText("操作复盘").first()).toBeVisible();
+});
+
 test("runs AI self-directed stock picking from the research workspace", async ({ page }) => {
   const requests: Array<Record<string, unknown>> = [];
   const actionRequests: Array<Record<string, unknown>> = [];
