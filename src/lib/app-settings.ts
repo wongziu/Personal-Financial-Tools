@@ -36,6 +36,18 @@ export interface SourceIntelligenceSettings {
   extractionPrompt: string;
 }
 
+export type AgentWorkflowMarket = "all" | "A-Share" | "HK" | "US";
+export type AgentWorkflowUniverse = "active-research" | "observed" | "holding" | "candidate" | "exited" | "researchable";
+
+export interface AgentWorkflowSettings {
+  enabled: boolean;
+  defaultMarket: AgentWorkflowMarket;
+  defaultUniverse: AgentWorkflowUniverse;
+  maxModelCandidates: number;
+  requireHumanApproval: boolean;
+  recordHistory: boolean;
+}
+
 export interface MarketChangeSettings {
   colorMode: MarketChangeColorMode;
 }
@@ -47,6 +59,7 @@ export interface AppSettings {
   marketChange: MarketChangeSettings;
   modelApi: ModelApiSettings;
   sourceIntelligence: SourceIntelligenceSettings;
+  agentWorkflow: AgentWorkflowSettings;
 }
 
 export type AppSettingsPatch = Partial<{
@@ -56,6 +69,7 @@ export type AppSettingsPatch = Partial<{
   marketChange: Partial<MarketChangeSettings>;
   modelApi: Partial<ModelApiSettings>;
   sourceIntelligence: Partial<SourceIntelligenceSettings>;
+  agentWorkflow: Partial<AgentWorkflowSettings>;
 }>;
 
 export const defaultAppSettings: AppSettings = {
@@ -89,6 +103,14 @@ export const defaultAppSettings: AppSettings = {
     reuseTargets: ["sources", "theses", "trade-decisions", "review-events"],
     extractionPrompt:
       "Extract investment-relevant facts, evidence quality, thesis impact, review triggers, and reusable decision context. Return strict JSON."
+  },
+  agentWorkflow: {
+    enabled: true,
+    defaultMarket: "all",
+    defaultUniverse: "active-research",
+    maxModelCandidates: 3,
+    requireHumanApproval: true,
+    recordHistory: true
   }
 };
 
@@ -114,7 +136,13 @@ const settingKeys = {
   sourceMaxSources: "settings.sourceIntelligence.maxSources",
   sourceDefaultDomains: "settings.sourceIntelligence.defaultDomains",
   sourceReuseTargets: "settings.sourceIntelligence.reuseTargets",
-  sourceExtractionPrompt: "settings.sourceIntelligence.extractionPrompt"
+  sourceExtractionPrompt: "settings.sourceIntelligence.extractionPrompt",
+  agentEnabled: "settings.agentWorkflow.enabled",
+  agentDefaultMarket: "settings.agentWorkflow.defaultMarket",
+  agentDefaultUniverse: "settings.agentWorkflow.defaultUniverse",
+  agentMaxModelCandidates: "settings.agentWorkflow.maxModelCandidates",
+  agentRequireHumanApproval: "settings.agentWorkflow.requireHumanApproval",
+  agentRecordHistory: "settings.agentWorkflow.recordHistory"
 } as const;
 
 export const defaultSystemSettingRows = [
@@ -139,7 +167,13 @@ export const defaultSystemSettingRows = [
   { key: settingKeys.sourceMaxSources, value: String(defaultAppSettings.sourceIntelligence.maxSources) },
   { key: settingKeys.sourceDefaultDomains, value: JSON.stringify(defaultAppSettings.sourceIntelligence.defaultDomains) },
   { key: settingKeys.sourceReuseTargets, value: JSON.stringify(defaultAppSettings.sourceIntelligence.reuseTargets) },
-  { key: settingKeys.sourceExtractionPrompt, value: defaultAppSettings.sourceIntelligence.extractionPrompt }
+  { key: settingKeys.sourceExtractionPrompt, value: defaultAppSettings.sourceIntelligence.extractionPrompt },
+  { key: settingKeys.agentEnabled, value: String(defaultAppSettings.agentWorkflow.enabled) },
+  { key: settingKeys.agentDefaultMarket, value: defaultAppSettings.agentWorkflow.defaultMarket },
+  { key: settingKeys.agentDefaultUniverse, value: defaultAppSettings.agentWorkflow.defaultUniverse },
+  { key: settingKeys.agentMaxModelCandidates, value: String(defaultAppSettings.agentWorkflow.maxModelCandidates) },
+  { key: settingKeys.agentRequireHumanApproval, value: String(defaultAppSettings.agentWorkflow.requireHumanApproval) },
+  { key: settingKeys.agentRecordHistory, value: String(defaultAppSettings.agentWorkflow.recordHistory) }
 ];
 
 function settingMap(database: DatabaseContext): Map<string, string> {
@@ -194,6 +228,16 @@ function normalizePairs(pairs: string[]): string[] {
   return normalized.length > 0 ? [...new Set(normalized)] : defaultAppSettings.fx.pairs;
 }
 
+function normalizeAgentWorkflowMarket(value: string): AgentWorkflowMarket {
+  return value === "A-Share" || value === "HK" || value === "US" ? value : "all";
+}
+
+function normalizeAgentWorkflowUniverse(value: string): AgentWorkflowUniverse {
+  return value === "observed" || value === "holding" || value === "candidate" || value === "exited" || value === "researchable"
+    ? value
+    : "active-research";
+}
+
 export function readAppSettings(database: DatabaseContext): AppSettings {
   const settings = settingMap(database);
 
@@ -227,6 +271,14 @@ export function readAppSettings(database: DatabaseContext): AppSettings {
       defaultDomains: arraySetting(settings, settingKeys.sourceDefaultDomains, defaultAppSettings.sourceIntelligence.defaultDomains),
       reuseTargets: arraySetting(settings, settingKeys.sourceReuseTargets, defaultAppSettings.sourceIntelligence.reuseTargets),
       extractionPrompt: stringSetting(settings, settingKeys.sourceExtractionPrompt, defaultAppSettings.sourceIntelligence.extractionPrompt)
+    },
+    agentWorkflow: {
+      enabled: booleanSetting(settings, settingKeys.agentEnabled, defaultAppSettings.agentWorkflow.enabled),
+      defaultMarket: normalizeAgentWorkflowMarket(stringSetting(settings, settingKeys.agentDefaultMarket, defaultAppSettings.agentWorkflow.defaultMarket)),
+      defaultUniverse: normalizeAgentWorkflowUniverse(stringSetting(settings, settingKeys.agentDefaultUniverse, defaultAppSettings.agentWorkflow.defaultUniverse)),
+      maxModelCandidates: Math.max(1, numberSetting(settings, settingKeys.agentMaxModelCandidates, defaultAppSettings.agentWorkflow.maxModelCandidates)),
+      requireHumanApproval: booleanSetting(settings, settingKeys.agentRequireHumanApproval, defaultAppSettings.agentWorkflow.requireHumanApproval),
+      recordHistory: booleanSetting(settings, settingKeys.agentRecordHistory, defaultAppSettings.agentWorkflow.recordHistory)
     }
   };
 }
@@ -269,6 +321,10 @@ export function updateAppSettings(database: DatabaseContext, patch: AppSettingsP
     sourceIntelligence: {
       ...current.sourceIntelligence,
       ...(patch.sourceIntelligence ?? {})
+    },
+    agentWorkflow: {
+      ...current.agentWorkflow,
+      ...(patch.agentWorkflow ?? {})
     }
   };
 
@@ -294,6 +350,12 @@ export function updateAppSettings(database: DatabaseContext, patch: AppSettingsP
   upsertSetting(database, settingKeys.sourceDefaultDomains, JSON.stringify(next.sourceIntelligence.defaultDomains));
   upsertSetting(database, settingKeys.sourceReuseTargets, JSON.stringify(next.sourceIntelligence.reuseTargets));
   upsertSetting(database, settingKeys.sourceExtractionPrompt, next.sourceIntelligence.extractionPrompt);
+  upsertSetting(database, settingKeys.agentEnabled, String(next.agentWorkflow.enabled));
+  upsertSetting(database, settingKeys.agentDefaultMarket, normalizeAgentWorkflowMarket(next.agentWorkflow.defaultMarket));
+  upsertSetting(database, settingKeys.agentDefaultUniverse, normalizeAgentWorkflowUniverse(next.agentWorkflow.defaultUniverse));
+  upsertSetting(database, settingKeys.agentMaxModelCandidates, String(Math.max(1, next.agentWorkflow.maxModelCandidates)));
+  upsertSetting(database, settingKeys.agentRequireHumanApproval, String(next.agentWorkflow.requireHumanApproval));
+  upsertSetting(database, settingKeys.agentRecordHistory, String(next.agentWorkflow.recordHistory));
 
   return readAppSettings(database);
 }

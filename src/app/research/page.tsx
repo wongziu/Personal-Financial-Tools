@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 const tabs: WorkspaceTab[] = [
   { id: "information-analysis", labelZh: "信息分析", labelEn: "Information Analysis", special: "information-analysis" },
   { id: "ai-picks", labelZh: "AI 自驱选股", labelEn: "AI Stock Picks", special: "ai-picks" },
-  { id: "my-decisions", labelZh: "我的决策", labelEn: "My Decisions", special: "decision-center" }
+  { id: "my-decisions", labelZh: "我的决策", labelEn: "My Decisions", special: "decision-center" },
+  { id: "agent-workflow", labelZh: "Agent 工作流", labelEn: "Agent Workflow", special: "agent-console" }
 ];
 
 export default function ResearchWorkspacePage() {

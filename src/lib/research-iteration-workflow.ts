@@ -128,6 +128,24 @@ export interface ResearchIterationCandidateActionWorkflowResult {
   nextActionRoute?: ResearchIterationActionRoute;
 }
 
+export interface ResearchAgentRunRecord {
+  runId: string;
+  runType: ResearchIterationTriggerType;
+  runDate: string;
+  securityId?: string;
+  securityName?: string;
+  strategyId?: string;
+  strategyName?: string;
+  strategyVersionId?: string;
+  reviewSessionId?: string;
+  question: string;
+  model: string;
+  status: string;
+  finalSummary: string;
+  createdAt: string;
+  stages: ResearchIterationStage[];
+}
+
 const localWorkflowModel = "local-structured-workflow";
 const maxModelAssessedCandidates = 3;
 
@@ -1065,6 +1083,58 @@ function buildCandidateActionStages(input: {
       latencyMs: 0
     }
   ];
+}
+
+function triggerTypeFromValue(value: unknown): ResearchIterationTriggerType {
+  return value === "target-diagnosis" || value === "review-session" || value === "candidate-action" ? value : "strategy-run";
+}
+
+function stagesForRun(database: DatabaseContext, runId: string): ResearchIterationStage[] {
+  return allRows(
+    database,
+    "SELECT * FROM research_agent_stages WHERE run_id = ? ORDER BY stage_order ASC, rowid ASC",
+    runId
+  ).map((stage) => ({
+    id: stringValue(stage.stage_id),
+    title: stringValue(stage.title),
+    status: "completed",
+    inputSummary: stringValue(stage.input_summary),
+    output: stringValue(stage.output),
+    latencyMs: Number(stage.latency_ms ?? 0)
+  }));
+}
+
+export function listResearchAgentRuns(
+  database: DatabaseContext,
+  options: { limit?: number } = {}
+): ResearchAgentRunRecord[] {
+  const limit = Math.max(1, Math.min(options.limit ?? 12, 50));
+  return allRows(
+    database,
+    `SELECT research_agent_runs.*, securities.name AS security_name, strategies.name AS strategy_name
+     FROM research_agent_runs
+     LEFT JOIN securities ON securities.id = research_agent_runs.security_id
+     LEFT JOIN strategies ON strategies.id = research_agent_runs.strategy_id
+     ORDER BY research_agent_runs.rowid DESC
+     LIMIT ?`,
+    limit
+  ).map((run) => ({
+    runId: stringValue(run.id),
+    runType: triggerTypeFromValue(run.run_type),
+    runDate: stringValue(run.run_date),
+    securityId: run.security_id ? stringValue(run.security_id) : undefined,
+    securityName: run.security_name ? stringValue(run.security_name) : undefined,
+    strategyId: run.strategy_id ? stringValue(run.strategy_id) : undefined,
+    strategyName: run.strategy_name ? stringValue(run.strategy_name) : undefined,
+    strategyVersionId: run.strategy_version_id ? stringValue(run.strategy_version_id) : undefined,
+    reviewSessionId: run.review_session_id ? stringValue(run.review_session_id) : undefined,
+    question: stringValue(run.question),
+    model: stringValue(run.model),
+    status: stringValue(run.status),
+    finalSummary: stringValue(run.final_summary),
+    createdAt: stringValue(run.created_at),
+    stages: stagesForRun(database, stringValue(run.id))
+  }));
 }
 
 export function listResearchIterationStrategyRuns(

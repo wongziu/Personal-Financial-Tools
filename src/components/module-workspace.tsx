@@ -2,6 +2,7 @@ import { AccountCalendarPage } from "@/components/account-calendar-page";
 import { ExportPage } from "@/components/export-page";
 import { ModulePage } from "@/components/module-page";
 import { ResearchAiPanel } from "@/components/research-ai-panel";
+import { ResearchAgentConsole } from "@/components/research-agent-console";
 import { AiStockPicksPage, DecisionCenterPanel, InformationAnalysisPanel } from "@/components/research-workbench-panels";
 import { TradeDecisionsPage, type TradeDecisionReferenceOptions } from "@/components/trade-decisions-page";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,7 +18,7 @@ export type WorkspaceTab =
       id: string;
       labelZh: string;
       labelEn: string;
-      special: "account-calendar" | "trade-decisions" | "research-ai" | "export" | "information-analysis" | "ai-picks" | "decision-center";
+      special: "account-calendar" | "trade-decisions" | "research-ai" | "export" | "information-analysis" | "ai-picks" | "decision-center" | "agent-console";
     };
 
 function securityReferenceOptions(database: DatabaseContext): ReferenceOption[] {
@@ -114,6 +115,9 @@ function renderTabContent(database: DatabaseContext, tab: WorkspaceTab) {
           reviewEvents={database.sqlite.prepare("SELECT * FROM review_events ORDER BY expected_date ASC, rowid DESC").all() as Row[]}
         />
       );
+    }
+    if (tab.special === "agent-console") {
+      return <ResearchAgentConsole />;
     }
     return <ExportPage />;
   }

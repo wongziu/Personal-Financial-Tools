@@ -3,6 +3,7 @@ import { defaultAppSettings } from "@/lib/app-settings";
 import { createDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
 import {
+  listResearchAgentRuns,
   listResearchIterationStrategyRuns,
   runResearchIterationCandidateActionWorkflow,
   runResearchIterationWorkflow,
@@ -337,6 +338,39 @@ describe("research AI iteration workflow", () => {
     expect(persistedRun.security_id).toBe("US-AAPL");
     expect(persistedRun.final_summary).toContain("补资料工作流");
     expect(stageCount.count).toBe(4);
+  });
+
+  test("lists recent agent operations with stages across workflow types", async () => {
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+    const result = runResearchIterationWorkflow(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "US",
+      question: "Run before listing operations."
+    });
+    const workflow = await runResearchIterationCandidateActionWorkflow(database, {
+      candidateId: result.candidates[0].id,
+      actionRoute: "CollectEvidence",
+      actionNote: "补资料后进入历史操作。"
+    }, {
+      settings: {
+        ...defaultAppSettings,
+        modelApi: {
+          ...defaultAppSettings.modelApi,
+          executionMode: "local"
+        }
+      }
+    });
+
+    const operations = listResearchAgentRuns(database, { limit: 5 });
+
+    expect(operations[0].runId).toBe(workflow.runId);
+    expect(operations[0].runType).toBe("candidate-action");
+    expect(operations[0].securityName).toBe("Apple Inc.");
+    expect(operations[0].stages.map((stage) => stage.title)).toContain("资料搜索 Agent");
+    expect(operations.map((operation) => operation.runType)).toContain("strategy-run");
+    expect(operations.find((operation) => operation.runId === result.runId)?.stages.length).toBeGreaterThan(0);
   });
 
   test("runs model research during collect-evidence when the candidate lacks assessment", async () => {

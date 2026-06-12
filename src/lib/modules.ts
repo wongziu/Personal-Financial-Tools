@@ -506,7 +506,7 @@ export const moduleDefinitions: ModuleDefinition[] = [
     tableColumns: ["id", "run_date", "run_type", "strategy_id", "security_id", "status"],
     fields: [
       { name: "id", column: "id", labelZh: "运行 ID", labelEn: "Run ID", type: "text" },
-      { name: "runType", column: "run_type", labelZh: "运行类型", labelEn: "Run Type", type: "select", options: ["strategy-run", "target-diagnosis", "review-session"], defaultValue: "strategy-run" },
+      { name: "runType", column: "run_type", labelZh: "运行类型", labelEn: "Run Type", type: "select", options: ["strategy-run", "target-diagnosis", "review-session", "candidate-action"], defaultValue: "strategy-run" },
       { name: "runDate", column: "run_date", labelZh: "运行日期", labelEn: "Run Date", type: "date", required: true },
       { name: "securityId", column: "security_id", labelZh: "标的", labelEn: "Security", type: "text", reference: { table: "securities", valueColumn: "id", labelColumns: ["name"], metadataColumns: ["account_id", "currency"] } },
       { name: "strategyId", column: "strategy_id", labelZh: "策略", labelEn: "Strategy", type: "text", reference: { table: "strategies", valueColumn: "id", labelColumns: ["name", "id"] } },

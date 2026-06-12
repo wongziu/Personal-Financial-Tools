@@ -22,6 +22,12 @@ describe("application settings", () => {
     expect(settings.modelApi.apiKeyMode).toBe("env");
     expect(settings.modelApi.maxTokens).toBe(2400);
     expect(settings.sourceIntelligence.enabled).toBe(true);
+    expect(settings.agentWorkflow.enabled).toBe(true);
+    expect(settings.agentWorkflow.defaultMarket).toBe("all");
+    expect(settings.agentWorkflow.defaultUniverse).toBe("active-research");
+    expect(settings.agentWorkflow.maxModelCandidates).toBe(3);
+    expect(settings.agentWorkflow.requireHumanApproval).toBe(true);
+    expect(settings.agentWorkflow.recordHistory).toBe(true);
   });
 
   test("updates nested settings without dropping existing defaults", () => {
@@ -43,6 +49,12 @@ describe("application settings", () => {
       },
       sourceIntelligence: {
         maxSources: 8
+      },
+      agentWorkflow: {
+        defaultMarket: "US",
+        defaultUniverse: "holding",
+        maxModelCandidates: 5,
+        requireHumanApproval: false
       }
     });
 
@@ -58,5 +70,11 @@ describe("application settings", () => {
     expect(settings.modelApi.maxTokens).toBe(2048);
     expect(settings.marketChange.colorMode).toBe("red-up-green-down");
     expect(settings.sourceIntelligence.maxSources).toBe(8);
+    expect(settings.agentWorkflow.enabled).toBe(true);
+    expect(settings.agentWorkflow.defaultMarket).toBe("US");
+    expect(settings.agentWorkflow.defaultUniverse).toBe("holding");
+    expect(settings.agentWorkflow.maxModelCandidates).toBe(5);
+    expect(settings.agentWorkflow.requireHumanApproval).toBe(false);
+    expect(settings.agentWorkflow.recordHistory).toBe(true);
   });
 });

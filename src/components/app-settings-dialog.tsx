@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { RefreshCcwIcon, SaveIcon, SettingsIcon, SparklesIcon, TestTube2Icon } from "lucide-react";
+import { BrainCircuitIcon, RefreshCcwIcon, SaveIcon, SettingsIcon, SparklesIcon, TestTube2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAppSettings } from "@/components/app-settings-provider";
@@ -51,6 +51,22 @@ function SettingRow({
     </div>
   );
 }
+
+const agentMarketOptions: Array<{ value: AppSettings["agentWorkflow"]["defaultMarket"]; zh: string; en: string }> = [
+  { value: "all", zh: "全部", en: "All" },
+  { value: "A-Share", zh: "A股", en: "A-Shares" },
+  { value: "HK", zh: "港股", en: "Hong Kong" },
+  { value: "US", zh: "美股", en: "U.S." }
+];
+
+const agentUniverseOptions: Array<{ value: AppSettings["agentWorkflow"]["defaultUniverse"]; zh: string; en: string }> = [
+  { value: "active-research", zh: "默认研究范围", en: "Default Research" },
+  { value: "observed", zh: "观察池", en: "Watchlist" },
+  { value: "holding", zh: "持仓中", en: "Holdings" },
+  { value: "candidate", zh: "候选池", en: "Candidate Pool" },
+  { value: "exited", zh: "已退出复盘", en: "Exited Review" },
+  { value: "researchable", zh: "全部可研究", en: "All Researchable" }
+];
 
 export function AppSettingsDialog() {
   const router = useRouter();
@@ -174,6 +190,10 @@ export function AppSettingsDialog() {
             <TabsTrigger value="general">{localize(language, "通用", "General")}</TabsTrigger>
             <TabsTrigger value="fx">{localize(language, "汇率", "FX")}</TabsTrigger>
             <TabsTrigger value="model">{localize(language, "模型 API", "Model API")}</TabsTrigger>
+            <TabsTrigger value="agent">
+              <BrainCircuitIcon className="mr-1 size-3" />
+              {localize(language, "Agent 工作流", "Agent Workflow")}
+            </TabsTrigger>
             <TabsTrigger value="source">
               <SparklesIcon className="mr-1 size-3" />
               {localize(language, "信息智能", "Source AI")}
@@ -362,6 +382,103 @@ export function AppSettingsDialog() {
                   {localize(language, "测试模型连接", "Test Model")}
                 </Button>
               </div>
+            </TabsContent>
+
+            <TabsContent value="agent" className="mt-0 flex flex-col gap-3">
+              <SettingRow
+                title={localize(language, "启用 Agent 工作流", "Enable Agent Workflow")}
+                description={localize(language, "控制研究工作台是否优先使用可审计的 Agent 阶段、运行记录和下一步编排。", "Controls whether the research workspace prioritizes auditable agent stages, run records, and next-step orchestration.")}
+              >
+                <Switch
+                  aria-label={localize(language, "启用 Agent 工作流", "Enable Agent Workflow")}
+                  checked={settings.agentWorkflow.enabled}
+                  onCheckedChange={(checked) => updateSettings((current) => ({ ...current, agentWorkflow: { ...current.agentWorkflow, enabled: checked } }))}
+                />
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "默认选股市场", "Default Stock Market")}
+                description={localize(language, "AI 自驱选股打开时的默认市场范围；仍可在页面上临时切换。", "Default market for AI stock picking; it can still be changed on the page.")}
+              >
+                <Select
+                  value={settings.agentWorkflow.defaultMarket}
+                  onValueChange={(value) =>
+                    updateSettings((current) => ({
+                      ...current,
+                      agentWorkflow: {
+                        ...current.agentWorkflow,
+                        defaultMarket: value as AppSettings["agentWorkflow"]["defaultMarket"]
+                      }
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label={localize(language, "默认选股市场", "Default Stock Market")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agentMarketOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{localize(language, option.zh, option.en)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "默认选股范围", "Default Stock Universe")}
+                description={localize(language, "决定策略运行默认先看持仓、观察、候选或全部可研究标的。", "Controls whether strategy runs start from holdings, watchlist, candidates, or all researchable securities.")}
+              >
+                <Select
+                  value={settings.agentWorkflow.defaultUniverse}
+                  onValueChange={(value) =>
+                    updateSettings((current) => ({
+                      ...current,
+                      agentWorkflow: {
+                        ...current.agentWorkflow,
+                        defaultUniverse: value as AppSettings["agentWorkflow"]["defaultUniverse"]
+                      }
+                    }))
+                  }
+                >
+                  <SelectTrigger aria-label={localize(language, "默认选股范围", "Default Stock Universe")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agentUniverseOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{localize(language, option.zh, option.en)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "模型研判候选上限", "Max Model-Assessed Candidates")}
+                description={localize(language, "每次策略运行最多调用模型补充多少个候选，避免一次运行过慢或费用不可控。", "Maximum candidates assessed by the model in one strategy run, limiting latency and cost.")}
+              >
+                <Input
+                  aria-label={localize(language, "模型研判候选上限", "Max Model-Assessed Candidates")}
+                  type="number"
+                  min={1}
+                  value={settings.agentWorkflow.maxModelCandidates}
+                  onChange={(event) => updateSettings((current) => ({ ...current, agentWorkflow: { ...current.agentWorkflow, maxModelCandidates: Number(event.target.value) || 1 } }))}
+                />
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "人工确认门禁", "Human Approval Gate")}
+                description={localize(language, "模型生成的资料草稿先进入待确认状态，不自动写入正式信息来源或交易决策。", "Model-generated drafts stay pending and are not automatically saved as formal sources or trade decisions.")}
+              >
+                <Switch
+                  aria-label={localize(language, "人工确认门禁", "Human Approval Gate")}
+                  checked={settings.agentWorkflow.requireHumanApproval}
+                  onCheckedChange={(checked) => updateSettings((current) => ({ ...current, agentWorkflow: { ...current.agentWorkflow, requireHumanApproval: checked } }))}
+                />
+              </SettingRow>
+              <SettingRow
+                title={localize(language, "记录历史操作", "Record Operation History")}
+                description={localize(language, "保留每次运行、候选行动和阶段输出，用于复盘为什么走到某个结论。", "Keep every run, candidate action, and stage output for later review.")}
+              >
+                <Switch
+                  aria-label={localize(language, "记录历史操作", "Record Operation History")}
+                  checked={settings.agentWorkflow.recordHistory}
+                  onCheckedChange={(checked) => updateSettings((current) => ({ ...current, agentWorkflow: { ...current.agentWorkflow, recordHistory: checked } }))}
+                />
+              </SettingRow>
             </TabsContent>
 
             <TabsContent value="source" className="mt-0 flex flex-col gap-3">

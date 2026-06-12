@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       question?: string;
     };
     const database = getSeededDatabase();
+    const settings = readAppSettings(database);
     const result = await runResearchIterationWorkflowWithModel(database, {
       triggerType: normalizeTriggerType(body.triggerType),
       strategyId: body.strategyId,
@@ -51,7 +52,8 @@ export async function POST(request: Request) {
       universe: normalizeResearchIterationUniverse(body.universe),
       question: body.question
     }, {
-      settings: readAppSettings(database)
+      settings,
+      maxCandidates: settings.agentWorkflow.maxModelCandidates
     });
 
     return NextResponse.json({ result });

@@ -36,6 +36,11 @@ test("opens system settings and saves fx and model configuration", async ({ page
   await expect(dialog.getByRole("combobox", { name: "执行模式" })).toContainText("模型 API");
   await dialog.getByRole("textbox", { name: "Model" }).fill("gpt-4.1-mini");
   await expect(dialog.getByRole("textbox", { name: "API Key Env" })).toHaveValue("ANTHROPIC_AUTH_TOKEN");
+  await dialog.getByRole("tab", { name: "Agent 工作流" }).click();
+  await expect(dialog.getByRole("combobox", { name: "默认选股市场" })).toContainText("全部");
+  await expect(dialog.getByRole("combobox", { name: "默认选股范围" })).toContainText("默认研究范围");
+  await expect(dialog.getByRole("spinbutton", { name: "模型研判候选上限" })).toHaveValue("3");
+  await expect(dialog.getByText("人工确认门禁")).toBeVisible();
 
   await dialog.getByRole("button", { name: "保存" }).click();
   await expect(page.getByText("记录已保存")).toBeVisible();
@@ -91,7 +96,13 @@ test("groups related modules into clearer tabbed workspaces", async ({ page }) =
   await expect(page.getByRole("tab", { name: "信息分析" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "AI 自驱选股" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "我的决策" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Agent 工作流" })).toBeVisible();
   await expect(page.getByTestId("source-intelligence-panel")).toBeVisible();
+  await page.getByRole("tab", { name: "Agent 工作流" }).click();
+  await expect(page.getByTestId("research-agent-console")).toBeVisible();
+  await expect(page.getByText("工作流总览", { exact: true })).toBeVisible();
+  await expect(page.getByText("Agent 配置快照", { exact: true })).toBeVisible();
+  await expect(page.getByText("历史操作", { exact: true })).toBeVisible();
   await expect(page.getByRole("tab", { name: "策略版本" })).toHaveCount(0);
 });
 
