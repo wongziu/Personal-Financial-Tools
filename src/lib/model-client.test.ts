@@ -73,6 +73,22 @@ describe("model client", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  test("aborts a slow model request instead of hanging the workflow", async () => {
+    process.env.MODEL_CLIENT_TEST_KEY = "secret-from-env";
+    const fetcher = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        reject(new DOMException("Aborted", "AbortError"));
+      });
+    }));
+
+    await expect(callConfiguredModel({
+      settings: modelSettings(),
+      messages: [{ role: "user", content: "Return JSON." }],
+      fetcher,
+      timeoutMs: 1
+    })).rejects.toThrow("Model API request timed out");
+  });
+
   test("tests model connectivity and reports upstream failures without throwing", async () => {
     process.env.MODEL_CLIENT_TEST_KEY = "secret-from-env";
     const fetcher = vi.fn(async () => new Response("model id invalid", { status: 403 }));

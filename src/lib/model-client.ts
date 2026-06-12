@@ -12,6 +12,7 @@ export interface ModelCallInput {
   messages: ModelChatMessage[];
   responseFormat?: "json" | "text";
   fetcher?: typeof fetch;
+  timeoutMs?: number;
 }
 
 export interface ModelCallResult {
@@ -69,20 +70,35 @@ function assertModelApiConfigured(settings: AppSettings): string {
 export async function callConfiguredModel(input: ModelCallInput): Promise<ModelCallResult> {
   const apiKey = assertModelApiConfigured(input.settings);
   const fetcher = input.fetcher ?? fetch;
-  const response = await fetcher(`${normalizeBaseUrl(input.settings.modelApi.baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: input.settings.modelApi.model,
-      temperature: input.settings.modelApi.temperature,
-      max_tokens: input.settings.modelApi.maxTokens,
-      ...(input.responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
-      messages: input.messages
-    })
-  });
+  const controller = new AbortController();
+  const timeoutMs = input.timeoutMs ?? 45_000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetcher(`${normalizeBaseUrl(input.settings.modelApi.baseUrl)}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: input.settings.modelApi.model,
+        temperature: input.settings.modelApi.temperature,
+        max_tokens: input.settings.modelApi.maxTokens,
+        ...(input.responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
+        messages: input.messages
+      })
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Model API request timed out after ${timeoutMs}ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -153,4 +169,3 @@ export function parseJsonObjectFromModel(content: string): Record<string, unknow
   }
   return parsed as Record<string, unknown>;
 }
-

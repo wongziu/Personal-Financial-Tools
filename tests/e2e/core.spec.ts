@@ -134,7 +134,18 @@ test("runs AI self-directed stock picking from the research workspace", async ({
               matchedRules: ["证据数=2"],
               missingEvidence: ["缺少最近一次结构化复盘结论"],
               riskFlags: ["风险主题：AI Capex"],
-              nextAction: "生成交易决策草案前先确认仓位上限。"
+              nextAction: "生成交易决策草案前先确认仓位上限。",
+              modelAssessment: {
+                mode: "model",
+                model: "openai:test-model@default",
+                searchStatus: "searched",
+                summary: "模型检索后认为仍需核对财报和复盘条件。",
+                judgement: "可推进",
+                suggestedAction: "进入交易草案前补齐复盘条件。",
+                evidenceHighlights: ["财报线索支持需求韧性"],
+                unresolvedGaps: ["缺少结构化复盘"],
+                searchQueries: ["Apple latest filing demand guidance"]
+              }
             }
           ],
           reviewFindings: []
@@ -167,6 +178,8 @@ test("runs AI self-directed stock picking from the research workspace", async ({
   await expect(result.getByText("1. Apple Inc.")).toBeVisible();
   await expect(result.getByText("观察池")).toBeVisible();
   await expect(result.getByText("可生成买入草案")).toBeVisible();
+  await expect(result.getByText("模型搜索研判")).toBeVisible();
+  await expect(result.getByText("模型检索后认为仍需核对财报和复盘条件。")).toBeVisible();
   await expect(result.getByText("缺少最近一次结构化复盘结论")).toBeVisible();
 });
 

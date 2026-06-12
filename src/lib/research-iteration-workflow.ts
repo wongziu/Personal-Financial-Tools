@@ -1,4 +1,6 @@
+import type { AppSettings } from "@/lib/app-settings";
 import type { DatabaseContext } from "@/lib/db/client";
+import { callConfiguredModel, getModelApiKey, parseJsonObjectFromModel } from "@/lib/model-client";
 import { nextBusinessId, type Row } from "@/lib/services";
 import {
   getSecurityLifecycleMap,
@@ -47,6 +49,19 @@ export interface ResearchIterationCandidate {
   missingEvidence: string[];
   riskFlags: string[];
   nextAction: string;
+  modelAssessment?: ResearchIterationModelAssessment;
+}
+
+export interface ResearchIterationModelAssessment {
+  mode: "model" | "unavailable";
+  model?: string;
+  searchStatus: "searched" | "model-only" | "unavailable";
+  summary: string;
+  judgement: string;
+  suggestedAction: string;
+  evidenceHighlights: string[];
+  unresolvedGaps: string[];
+  searchQueries: string[];
 }
 
 export interface ResearchIterationFinding {
@@ -74,6 +89,7 @@ export interface ResearchIterationWorkflowResult {
 }
 
 const localWorkflowModel = "local-structured-workflow";
+const maxModelAssessedCandidates = 3;
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -103,6 +119,47 @@ function parseStringArray(value: unknown): string[] {
     .split(/[,，]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function stringFromJsonItem(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const row = value as Record<string, unknown>;
+    const parts = [
+      row.source,
+      row.title,
+      row.name,
+      row.finding,
+      row.summary,
+      row.url
+    ].map((item) => typeof item === "string" ? item.trim() : "").filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join("：");
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+
+  return String(value ?? "");
+}
+
+function stringArrayFromJson(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(stringFromJsonItem).map((item) => item.trim()).filter(Boolean).slice(0, 6);
+}
+
+function modelText(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function jsonText(items: string[]): string {
@@ -232,6 +289,26 @@ function insertStages(database: DatabaseContext, runId: string, stages: Research
   });
 }
 
+function appendStage(database: DatabaseContext, runId: string, stageOrder: number, stage: ResearchIterationStage): void {
+  database.sqlite
+    .prepare(
+      `INSERT INTO research_agent_stages (
+        id, run_id, stage_order, stage_id, title, status, input_summary, output, latency_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      nextBusinessId(database, "ASTG"),
+      runId,
+      stageOrder,
+      stage.id,
+      stage.title,
+      stage.status,
+      stage.inputSummary,
+      stage.output,
+      stage.latencyMs
+    );
+}
+
 function buildCandidate(database: DatabaseContext, security: Row, lifecycle: SecurityLifecycleEntry, rankSeed: number): Omit<ResearchIterationCandidate, "id" | "rank"> {
   const securityId = String(security.id);
   const sources = sourceRows(database, securityId);
@@ -325,7 +402,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       title: "数据覆盖 Agent",
       status: "completed",
       inputSummary: `market=${market}; universe=${universe}; securities=${securities.length}`,
-      output: `${marketName} / ${universeName}包含 ${securities.length} 个标的；缺失证据会写入候选卡片，不用模型输出替代事实。`,
+      output: `${marketName} / ${universeName}包含 ${securities.length} 个标的；缺失证据会写入候选卡片，并在模型配置可用时触发模型检索研判。`,
       latencyMs: 0
     },
     {
@@ -349,7 +426,7 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
       title: "反证 Critic",
       status: "completed",
       inputSummary: `question=${input.question ?? ""}`,
-      output: `本轮只使用本地数据，并限定在${marketName} / ${universeName}；缺少最近复盘和外部来源的候选不能直接升级为交易建议。`,
+      output: `本轮先用本地数据筛选并限定在${marketName} / ${universeName}；缺少复盘、论点或外部来源的候选必须经过补资料或模型研判后再升级为交易建议。`,
       latencyMs: 0
     }
   ];
@@ -409,6 +486,182 @@ function runStrategyWorkflow(database: DatabaseContext, input: ResearchIteration
     candidates,
     reviewFindings: []
   };
+}
+
+function candidateNeedsModelAssessment(candidate: ResearchIterationCandidate): boolean {
+  return candidate.missingEvidence.length > 0 && candidate.recommendation !== "Skip";
+}
+
+function buildModelResearchPrompt(input: {
+  candidate: ResearchIterationCandidate;
+  security: Row | undefined;
+  strategy: Row | undefined;
+  strategyVersion: Row | undefined;
+  question?: string;
+}): string {
+  return [
+    "You are the model research agent inside a single-user investment decision system.",
+    "When local evidence is missing, use your available public-web/search capability if the model runtime supports it. If live search is not available, explicitly set searchStatus to model-only.",
+    "Do not fabricate source names, URLs, or filings. Separate confirmed public evidence from search queries that still need manual verification.",
+    "Return compact strict JSON with keys: searchStatus, summary, judgement, suggestedAction, evidenceHighlights, unresolvedGaps, searchQueries.",
+    "searchStatus must be one of: searched, model-only.",
+    "judgement should be one short Chinese phrase such as 可推进, 先补资料, 观察, 暂不买入.",
+    `Question: ${input.question || "判断该候选是否值得进入下一步研究或交易决策。"}`,
+    `Strategy: ${input.strategy ? `${String(input.strategy.name)} / riskBudget=${stringValue(input.strategy.risk_budget)}` : "N/A"}`,
+    `Strategy version: ${input.strategyVersion ? `${String(input.strategyVersion.version)} / evidenceRequirements=${stringValue(input.strategyVersion.evidence_requirements)}` : "N/A"}`,
+    `Security: ${input.candidate.securityName} (${input.candidate.securityId}); market=${stringValue(input.security?.market)}; ticker=${stringValue(input.security?.ticker)}; assetType=${stringValue(input.security?.asset_type)}; riskThemes=${parseStringArray(input.security?.risk_theme_tags).join(", ") || "N/A"}`,
+    `Local candidate: fitScore=${input.candidate.fitScore}; recommendation=${input.candidate.recommendation}; lifecycle=${securityLifecycleLabels[input.candidate.lifecycleBucket].zh}`,
+    `Local matched rules: ${input.candidate.matchedRules.join("；") || "N/A"}`,
+    `Local gaps: ${input.candidate.missingEvidence.join("；") || "N/A"}`,
+    `Local risks: ${input.candidate.riskFlags.join("；") || "N/A"}`
+  ].join("\n");
+}
+
+function assessmentFromJson(value: Record<string, unknown>, fallback: ResearchIterationModelAssessment): ResearchIterationModelAssessment {
+  const rawSearchStatus = String(value.searchStatus ?? "");
+  const searchStatus: ResearchIterationModelAssessment["searchStatus"] = rawSearchStatus === "searched" ? "searched" : "model-only";
+  return {
+    ...fallback,
+    mode: "model",
+    searchStatus,
+    summary: modelText(value.summary, fallback.summary),
+    judgement: modelText(value.judgement, fallback.judgement),
+    suggestedAction: modelText(value.suggestedAction, fallback.suggestedAction),
+    evidenceHighlights: stringArrayFromJson(value.evidenceHighlights),
+    unresolvedGaps: stringArrayFromJson(value.unresolvedGaps),
+    searchQueries: stringArrayFromJson(value.searchQueries)
+  };
+}
+
+function unavailableAssessment(candidate: ResearchIterationCandidate, reason: string): ResearchIterationModelAssessment {
+  return {
+    mode: "unavailable",
+    searchStatus: "unavailable",
+    summary: `模型研判未执行：${reason}`,
+    judgement: candidate.recommendation === "DraftDecision" ? "需人工复核" : "先补资料",
+    suggestedAction: "先补齐本地信息来源、投资论点和结构化复盘，再进入交易决策。",
+    evidenceHighlights: [],
+    unresolvedGaps: candidate.missingEvidence,
+    searchQueries: [`${candidate.securityName} 公告 财报 行业数据 风险`]
+  };
+}
+
+async function assessCandidateWithModel(input: {
+  settings: AppSettings;
+  candidate: ResearchIterationCandidate;
+  security: Row | undefined;
+  strategy: Row | undefined;
+  strategyVersion: Row | undefined;
+  question?: string;
+  fetcher?: typeof fetch;
+}): Promise<ResearchIterationModelAssessment> {
+  const apiKey = getModelApiKey(input.settings);
+  if (input.settings.modelApi.executionMode !== "model" || input.settings.modelApi.provider === "disabled" || !apiKey) {
+    return unavailableAssessment(input.candidate, "模型 API 未启用或 API Key 环境变量未配置。");
+  }
+
+  const prompt = buildModelResearchPrompt(input);
+  const fallback: ResearchIterationModelAssessment = {
+    mode: "model",
+    model: input.settings.modelApi.model,
+    searchStatus: "model-only",
+    summary: "模型返回内容不足，需人工复核。",
+    judgement: "先补资料",
+    suggestedAction: input.candidate.nextAction,
+    evidenceHighlights: [],
+    unresolvedGaps: input.candidate.missingEvidence,
+    searchQueries: [`${input.candidate.securityName} 公告 财报 行业数据 风险`]
+  };
+
+  try {
+    const result = await callConfiguredModel({
+      settings: input.settings,
+      responseFormat: "json",
+      fetcher: input.fetcher,
+      messages: [
+        {
+          role: "system",
+          content: "You are a cautious investment research agent. Return only valid compact JSON. Never invent evidence; mark unresolved gaps clearly."
+        },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    return {
+      ...assessmentFromJson(parseJsonObjectFromModel(result.content), fallback),
+      model: result.model
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown model error";
+    return unavailableAssessment(input.candidate, message);
+  }
+}
+
+export async function runResearchIterationWorkflowWithModel(
+  database: DatabaseContext,
+  input: ResearchIterationWorkflowInput,
+  runtime: {
+    settings?: AppSettings;
+    fetcher?: typeof fetch;
+    maxCandidates?: number;
+  } = {}
+): Promise<ResearchIterationWorkflowResult> {
+  const result = runResearchIterationWorkflow(database, input);
+  if (input.triggerType !== "strategy-run" || !runtime.settings) {
+    return result;
+  }
+
+  const candidatesToAssess = result.candidates
+    .filter(candidateNeedsModelAssessment)
+    .slice(0, runtime.maxCandidates ?? maxModelAssessedCandidates);
+  if (candidatesToAssess.length === 0) {
+    return result;
+  }
+
+  const settings = runtime.settings;
+  const startedAt = Date.now();
+  const strategy = result.strategyId ? firstRow(database, "SELECT * FROM strategies WHERE id = ?", result.strategyId) : undefined;
+  const strategyVersion = result.strategyVersionId ? firstRow(database, "SELECT * FROM strategy_versions WHERE id = ?", result.strategyVersionId) : undefined;
+  const securityById = new Map(
+    allRows(database, "SELECT * FROM securities").map((security) => [String(security.id), security])
+  );
+
+  const assessments = await Promise.all(candidatesToAssess.map((candidate) => assessCandidateWithModel({
+      settings,
+      fetcher: runtime.fetcher,
+      candidate,
+      security: securityById.get(candidate.securityId),
+      strategy,
+      strategyVersion,
+      question: input.question
+    })));
+  candidatesToAssess.forEach((candidate, index) => {
+    candidate.modelAssessment = assessments[index];
+  });
+
+  const modelCount = result.candidates.filter((candidate) => candidate.modelAssessment?.mode === "model").length;
+  const unavailableCount = result.candidates.filter((candidate) => candidate.modelAssessment?.mode === "unavailable").length;
+  const stage: ResearchIterationStage = {
+    id: "model-research",
+    title: "模型搜索研判 Agent",
+    status: "completed",
+    inputSummary: `assessed=${candidatesToAssess.length}; model=${settings.modelApi.model}`,
+    output:
+      modelCount > 0
+        ? `已对 ${modelCount} 个资料缺口候选调用模型做检索式研判；${unavailableCount > 0 ? `${unavailableCount} 个候选因模型不可用降级。` : "模型结论仅作为研究线索，不能替代可审计来源。"}`
+        : `资料缺口候选需要模型研判，但模型不可用；已标记 ${unavailableCount} 个候选为先补资料。`,
+    latencyMs: Date.now() - startedAt
+  };
+  result.stages = [...result.stages, stage];
+  result.finalSummary = `${result.finalSummary} 模型研判：${modelCount} 个候选已补充，${unavailableCount} 个候选未能调用模型。`;
+
+  appendStage(database, result.runId, result.stages.length, stage);
+  database.sqlite.prepare("UPDATE research_agent_runs SET final_summary = ? WHERE id = ?").run(result.finalSummary, result.runId);
+  if (result.strategyRunId) {
+    database.sqlite.prepare("UPDATE strategy_runs SET final_summary = ? WHERE id = ?").run(result.finalSummary, result.strategyRunId);
+  }
+
+  return result;
 }
 
 function runTargetDiagnosisWorkflow(database: DatabaseContext, input: ResearchIterationWorkflowInput): ResearchIterationWorkflowResult {

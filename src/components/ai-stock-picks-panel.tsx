@@ -78,6 +78,7 @@ const progressTemplates = [
   { id: "universe", zh: "整理标的池", en: "Prepare Universe" },
   { id: "coverage", zh: "检查资料与论点", en: "Check Evidence" },
   { id: "screening", zh: "筛选候选", en: "Screen Candidates" },
+  { id: "model-research", zh: "模型搜索研判", en: "Model Research" },
   { id: "advice", zh: "生成行动建议", en: "Generate Actions" }
 ] as const;
 
@@ -262,8 +263,8 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
           <CardDescription>
             {localize(
               language,
-              "基于内置策略和本地记录更新候选标的，输出可读的买入、观察或暂不买入建议。",
-              "Refresh candidate securities from built-in strategies and local records, with readable buy, observe, or skip guidance."
+              "基于内置策略、本地记录和模型检索研判更新候选标的，输出可读的买入、观察或暂不买入建议。",
+              "Refresh candidate securities from built-in strategies, local records, and model research, with readable buy, observe, or skip guidance."
             )}
           </CardDescription>
         </div>
@@ -359,7 +360,7 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
               <div className="text-sm font-semibold">{localize(language, "Agent 进度", "Agent Progress")}</div>
               {progressError ? <Badge variant="destructive">{localize(language, "失败", "Failed")}</Badge> : isRunning ? <Badge variant="secondary">{localize(language, "运行中", "Running")}</Badge> : <Badge variant="secondary">{localize(language, "已完成", "Completed")}</Badge>}
             </div>
-            <div className="grid gap-2 md:grid-cols-5">
+            <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
               {progressStages.map((stage) => (
                 <div key={stage.id} className="flex min-h-10 items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs">
                   {stage.status === "completed" ? <CheckCircle2Icon className="size-4 text-emerald-600" /> : null}
@@ -392,6 +393,30 @@ export function AiStockPicksPanel({ securities, strategies }: { securities: Refe
                       </div>
                     </div>
                     <div className="mt-3 text-sm">{candidate.nextAction}</div>
+                    {candidate.modelAssessment ? (
+                      <div className="mt-3 rounded-md border bg-muted/20 p-2 text-xs">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <Badge variant={candidate.modelAssessment.mode === "model" ? "secondary" : "outline"}>
+                            {candidate.modelAssessment.mode === "model"
+                              ? localize(language, "模型搜索研判", "Model Research")
+                              : localize(language, "模型未执行", "Model Unavailable")}
+                          </Badge>
+                          <span className="font-medium">{candidate.modelAssessment.judgement}</span>
+                        </div>
+                        <div className="text-muted-foreground">{candidate.modelAssessment.summary}</div>
+                        <div className="mt-1">{localize(language, "模型建议", "Model Action")}: {candidate.modelAssessment.suggestedAction}</div>
+                        {candidate.modelAssessment.evidenceHighlights.length > 0 ? (
+                          <div className="mt-1 text-muted-foreground">
+                            {localize(language, "线索", "Leads")}: {candidate.modelAssessment.evidenceHighlights.join("；")}
+                          </div>
+                        ) : null}
+                        {candidate.modelAssessment.searchQueries.length > 0 ? (
+                          <div className="mt-1 text-muted-foreground">
+                            {localize(language, "检索词", "Search Queries")}: {candidate.modelAssessment.searchQueries.join("；")}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                       <div>{localize(language, "入选原因", "Why")}: {candidate.matchedRules.join("；")}</div>
                       <div>{localize(language, "缺口", "Gaps")}: {candidate.missingEvidence.join("；") || "N/A"}</div>

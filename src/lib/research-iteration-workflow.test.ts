@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { defaultAppSettings } from "@/lib/app-settings";
 import { createDatabase } from "@/lib/db/client";
 import { seedDemoData } from "@/lib/db/seed";
-import { runResearchIterationWorkflow } from "@/lib/research-iteration-workflow";
+import { runResearchIterationWorkflow, runResearchIterationWorkflowWithModel } from "@/lib/research-iteration-workflow";
 
 function insertSecurity(database: ReturnType<typeof createDatabase>, id: string) {
   database.sqlite
@@ -193,6 +194,60 @@ describe("research AI iteration workflow", () => {
     expect(hkResult.candidates.map((candidate) => candidate.securityId)).toEqual(["HK-00700"]);
     expect(aShareResult.market).toBe("A-Share");
     expect(aShareResult.candidates.map((candidate) => candidate.securityId)).toEqual(["CN-510300"]);
+  });
+
+  test("calls the configured model to assess candidates with missing local evidence", async () => {
+    process.env.RESEARCH_ITERATION_TEST_KEY = "research-key";
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              searchStatus: "searched",
+              summary: "模型检索到沪深300ETF仍需核对公告、指数跟踪误差和资金流数据。",
+              judgement: "先补资料",
+              suggestedAction: "补齐公告与指数数据后再判断是否加仓。",
+              evidenceHighlights: [
+                { source: "基金公告", finding: "需要查看基金公告" },
+                { source: "指数数据", finding: "需要核对指数跟踪误差" }
+              ],
+              unresolvedGaps: ["缺少最近一次结构化复盘结论"],
+              searchQueries: ["沪深300ETF 公告 跟踪误差 资金流"]
+            })
+          }
+        }
+      ]
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const database = createDatabase(":memory:");
+    seedDemoData(database);
+
+    const result = await runResearchIterationWorkflowWithModel(database, {
+      triggerType: "strategy-run",
+      strategyId: "STRAT-CORE-GROWTH",
+      market: "A-Share",
+      question: "Run the strategy and search missing evidence."
+    }, {
+      settings: {
+        ...defaultAppSettings,
+        modelApi: {
+          ...defaultAppSettings.modelApi,
+          executionMode: "model",
+          apiKeyEnvVar: "RESEARCH_ITERATION_TEST_KEY",
+          model: "openai:test-model@default"
+        }
+      },
+      fetcher
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(result.stages.map((stage) => stage.id)).toContain("model-research");
+    expect(result.finalSummary).toContain("模型研判");
+    expect(result.candidates[0].securityId).toBe("CN-510300");
+    expect(result.candidates[0].modelAssessment?.mode).toBe("model");
+    expect(result.candidates[0].modelAssessment?.summary).toContain("沪深300ETF");
+    expect(result.candidates[0].modelAssessment?.evidenceHighlights[0]).toContain("基金公告");
+    expect(result.candidates[0].modelAssessment?.suggestedAction).toContain("补齐公告");
   });
 
   test("runs a target diagnosis workflow for a selected security", () => {
